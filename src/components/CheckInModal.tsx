@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 
 type CheckInModalProps = {
   open: boolean;
   onClose: () => void;
+  children: ReactNode;
 };
 
-export default function CheckInModal({ open, onClose }: CheckInModalProps) {
+export default function CheckInModal({
+  open,
+  onClose,
+  children,
+}: CheckInModalProps) {
   const [query, setQuery] = useState("");
 
   const handleClose = useCallback(() => {
@@ -60,12 +65,7 @@ export default function CheckInModal({ open, onClose }: CheckInModalProps) {
             className="w-full rounded-xl border px-3 py-2 text-sm"
           />
 
-          <div className="rounded-xl border bg-slate-50 p-3">
-            <p className="text-sm text-slate-600">No results yet</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Search will connect to children records next.
-            </p>
-          </div>
+          {children}
         </div>
 
         <div className="border-t px-4 py-3">
