@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 type CheckInModalProps = {
   open: boolean;
@@ -10,10 +10,10 @@ type CheckInModalProps = {
 export default function CheckInModal({ open, onClose }: CheckInModalProps) {
   const [query, setQuery] = useState("");
 
-  function handleClose() {
+  const handleClose = useCallback(() => {
     setQuery("");
     onClose();
-  }
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -24,7 +24,7 @@ export default function CheckInModal({ open, onClose }: CheckInModalProps) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  }, [open, handleClose]);
 
   if (!open) return null;
 
