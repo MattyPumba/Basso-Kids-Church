@@ -16,8 +16,6 @@ type FormState = {
   first_name: string;
   last_name: string;
   dob: string; // YYYY-MM-DD
-  parent_name: string;
-  parent_phone: string;
   allergies: string;
   medical_notes: string;
   notes: string;
@@ -27,8 +25,6 @@ const initialState: FormState = {
   first_name: "",
   last_name: "",
   dob: "",
-  parent_name: "",
-  parent_phone: "",
   allergies: "",
   medical_notes: "",
   notes: "",
@@ -67,8 +63,6 @@ export default function CreateChildModal({
   );
 
   const [selectedGuardians, setSelectedGuardians] = useState<GuardianRow[]>([]);
-
-  // Show/hide create guardian block
   const [createGuardianOpen, setCreateGuardianOpen] = useState(false);
 
   const canSave = useMemo(() => {
@@ -134,7 +128,7 @@ export default function CreateChildModal({
 
         const { data, error } = await supabase
           .from("guardians")
-          .select("id,full_name,relationship,phone,active")
+          .select("id,first_name,last_name,full_name,relationship,phone,active")
           .eq("active", true)
           .or(`full_name.ilike.${pattern},phone.ilike.${pattern}`)
           .order("full_name", { ascending: true })
@@ -174,7 +168,6 @@ export default function CreateChildModal({
     addGuardianToSelection(g);
     setCreateGuardianOpen(false);
     setGuardianQuery(g.full_name ?? "");
-
   }
 
   if (!open) return null;
@@ -200,15 +193,12 @@ export default function CreateChildModal({
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         dob: form.dob.trim(),
-        parent_name: form.parent_name.trim() || null,
-        parent_phone: form.parent_phone.trim() || null,
         allergies: form.allergies.trim() || null,
         medical_notes: form.medical_notes.trim() || null,
         notes: form.notes.trim() || null,
         active: true,
       };
 
-      // Insert child and return id
       const { data: childData, error: insertError } = await supabase
         .from("children")
         .insert(payload)
@@ -218,7 +208,6 @@ export default function CreateChildModal({
       if (insertError) throw insertError;
       if (!childData?.id) throw new Error("Child insert did not return an id.");
 
-      // Link selected guardians via child_guardians
       if (selectedGuardians.length > 0) {
         const links = selectedGuardians.map((g) => ({
           child_id: childData.id,
@@ -244,14 +233,12 @@ export default function CreateChildModal({
 
   return (
     <div
-  className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2"
-  role="dialog"
-  aria-modal="true"
->
-  <div className="flex max-h-[90dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-lg">
-    {/* Header (fixed) */}
-    <div className="flex items-center justify-between border-b px-4 py-3">
-
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="flex max-h-[90dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-lg">
+        <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-slate-900">New Child</p>
             <p className="text-xs text-slate-500">Create a child record</p>
@@ -268,7 +255,6 @@ export default function CreateChildModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-
           {error ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
               {error}
@@ -306,44 +292,12 @@ export default function CreateChildModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">DOB *</label>
-              <input
-                type="date"
-                value={form.dob}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, dob: e.target.value }))
-                }
-                className="w-full rounded-xl border px-3 py-2 text-sm"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">
-                Parent phone
-              </label>
-              <input
-                type="tel"
-                value={form.parent_phone}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, parent_phone: e.target.value }))
-                }
-                className="w-full rounded-xl border px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-700">
-              Parent name
-            </label>
+            <label className="text-xs font-medium text-slate-700">DOB *</label>
             <input
-              type="text"
-              value={form.parent_name}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, parent_name: e.target.value }))
-              }
+              type="date"
+              value={form.dob}
+              onChange={(e) => setForm((p) => ({ ...p, dob: e.target.value }))}
               className="w-full rounded-xl border px-3 py-2 text-sm"
             />
           </div>
@@ -387,7 +341,6 @@ export default function CreateChildModal({
             />
           </div>
 
-          {/* Approved guardians section */}
           <div className="rounded-2xl border p-3 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -417,7 +370,7 @@ export default function CreateChildModal({
                   >
                     <div>
                       <p className="text-sm font-medium text-slate-900">
-                        {g.full_name}
+                        {g.full_name ?? "—"}
                       </p>
                       <p className="text-xs text-slate-600">
                         {g.relationship ? g.relationship : "—"}
@@ -488,7 +441,7 @@ export default function CreateChildModal({
                         className="w-full px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
                       >
                         <p className="text-sm font-medium text-slate-900">
-                          {g.full_name}
+                          {g.full_name ?? "—"}
                           {already ? " (linked)" : ""}
                         </p>
                         <p className="text-xs text-slate-600">
