@@ -35,7 +35,7 @@ export default function TodayPage() {
       <div className="mx-auto max-w-md px-4 py-6">
         <div className="rounded-2xl border bg-white p-4 shadow-sm">
           <p className="text-sm text-slate-700">
-            Supabase: not configured yet. Add keys to <code>.env.local</code>.
+            Supabase connected.
           </p>
         </div>
       </div>
