@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import CreateGuardianInline, {
+  GuardianRow,
+} from "@/components/CreateGuardianInline";
 
 type CreateChildModalProps = {
   open: boolean;
@@ -18,14 +21,6 @@ type FormState = {
   allergies: string;
   medical_notes: string;
   notes: string;
-};
-
-type GuardianRow = {
-  id: string;
-  full_name: string;
-  relationship: string | null;
-  phone: string | null;
-  active: boolean | null;
 };
 
 const initialState: FormState = {
@@ -73,6 +68,9 @@ export default function CreateChildModal({
 
   const [selectedGuardians, setSelectedGuardians] = useState<GuardianRow[]>([]);
 
+  // Show/hide create guardian block
+  const [createGuardianOpen, setCreateGuardianOpen] = useState(false);
+
   const canSave = useMemo(() => {
     return (
       form.first_name.trim().length > 0 &&
@@ -83,6 +81,7 @@ export default function CreateChildModal({
 
   const handleClose = useCallback(() => {
     if (saving) return;
+
     setError(null);
     setForm(initialState);
 
@@ -91,6 +90,8 @@ export default function CreateChildModal({
     setGuardianSearching(false);
     setGuardianSearchError(null);
     setSelectedGuardians([]);
+
+    setCreateGuardianOpen(false);
 
     onClose();
   }, [onClose, saving]);
@@ -169,6 +170,13 @@ export default function CreateChildModal({
     setSelectedGuardians((prev) => prev.filter((g) => g.id !== id));
   }
 
+  function handleGuardianCreated(g: GuardianRow) {
+    addGuardianToSelection(g);
+    setCreateGuardianOpen(false);
+    setGuardianQuery(g.full_name ?? "");
+
+  }
+
   if (!open) return null;
 
   async function handleSave() {
@@ -236,12 +244,14 @@ export default function CreateChildModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b px-4 py-3">
+  className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2"
+  role="dialog"
+  aria-modal="true"
+>
+  <div className="flex max-h-[90dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-lg">
+    {/* Header (fixed) */}
+    <div className="flex items-center justify-between border-b px-4 py-3">
+
           <div>
             <p className="text-sm font-semibold text-slate-900">New Child</p>
             <p className="text-xs text-slate-500">Create a child record</p>
@@ -257,7 +267,8 @@ export default function CreateChildModal({
           </button>
         </div>
 
-        <div className="px-4 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+
           {error ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
               {error}
@@ -378,13 +389,23 @@ export default function CreateChildModal({
 
           {/* Approved guardians section */}
           <div className="rounded-2xl border p-3 space-y-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">
-                Approved guardians
-              </p>
-              <p className="text-xs text-slate-500">
-                Link existing guardians to this child.
-              </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
+                  Approved guardians
+                </p>
+                <p className="text-xs text-slate-500">
+                  Link guardians to this child.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCreateGuardianOpen((v) => !v)}
+                className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                {createGuardianOpen ? "Close" : "Create guardian"}
+              </button>
             </div>
 
             {selectedGuardians.length > 0 ? (
@@ -421,6 +442,14 @@ export default function CreateChildModal({
               </div>
             )}
 
+            {createGuardianOpen ? (
+              <CreateGuardianInline
+                initialName={trimmedGuardianQuery}
+                onCreated={handleGuardianCreated}
+                disabled={saving}
+              />
+            ) : null}
+
             <div className="space-y-2">
               <input
                 type="text"
@@ -443,7 +472,9 @@ export default function CreateChildModal({
               ) : guardianSearching ? (
                 <p className="text-xs text-slate-500">Searching…</p>
               ) : guardianResults.length === 0 ? (
-                <p className="text-xs text-slate-500">No matches.</p>
+                <p className="text-xs text-slate-500">
+                  No matches. Use “Create guardian”.
+                </p>
               ) : (
                 <div className="divide-y rounded-xl border">
                   {guardianResults.map((g) => {
