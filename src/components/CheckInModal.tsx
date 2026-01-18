@@ -1,26 +1,30 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect } from "react";
 
 type CheckInModalProps = {
   open: boolean;
   onClose: () => void;
-  children: ReactNode;
+
+  query: string;
+  onQueryChange: (next: string) => void;
+
   onNewChild?: () => void;
+  children: ReactNode;
 };
 
 export default function CheckInModal({
   open,
   onClose,
-  children,
+  query,
+  onQueryChange,
   onNewChild,
+  children,
 }: CheckInModalProps) {
-  const [query, setQuery] = useState("");
-
   const handleClose = useCallback(() => {
-    setQuery("");
+    onQueryChange("");
     onClose();
-  }, [onClose]);
+  }, [onClose, onQueryChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +67,7 @@ export default function CheckInModal({
             type="text"
             placeholder="Search by child name or parent phone"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => onQueryChange(e.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           />
 
