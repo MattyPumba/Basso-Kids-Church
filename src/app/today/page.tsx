@@ -11,7 +11,6 @@ export default function TodayPage() {
 
   useEffect(() => {
     if (!supabase) {
-      // defer state updates to avoid eslint react-hooks/set-state-in-effect
       Promise.resolve().then(() => {
         setStatus("not_configured");
         setMessage("Add keys to .env.local");
