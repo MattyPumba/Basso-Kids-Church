@@ -41,8 +41,17 @@ function getErrorMessage(err: unknown): string {
   }
 }
 
+function isDuplicateConstraint(err: unknown): boolean {
+  // Postgres unique violation code
+  const e = err as { code?: string; message?: string; details?: string };
+  if (e?.code === "23505") return true;
+  const msg = `${e?.message ?? ""} ${e?.details ?? ""}`.toLowerCase();
+  // fallback (supabase sometimes includes "duplicate key value violates unique constraint")
+  return msg.includes("duplicate") && msg.includes("unique");
+}
+
 type CreateGuardianInlineProps = {
-  initialName?: string; // best-effort prefill into first_name
+  initialName?: string; // best-effort prefill into first_name/last_name
   onCreated: (guardian: GuardianRow) => void;
   disabled?: boolean;
 };
@@ -76,8 +85,8 @@ export default function CreateGuardianInline({
   const [error, setError] = useState<string | null>(null);
 
   const canCreate = useMemo(
-    () => form.first_name.trim().length > 0,
-    [form.first_name]
+    () => form.first_name.trim().length > 0 && form.phone.trim().length > 0,
+    [form.first_name, form.phone]
   );
 
   async function handleCreate() {
@@ -89,8 +98,13 @@ export default function CreateGuardianInline({
       return;
     }
 
-    if (!canCreate) {
+    if (!form.first_name.trim()) {
       setError("First name is required.");
+      return;
+    }
+
+    if (!form.phone.trim()) {
+      setError("Phone is required (used to prevent duplicates).");
       return;
     }
 
@@ -119,7 +133,13 @@ export default function CreateGuardianInline({
       onCreated(data as GuardianRow);
       setForm(initialGuardianState);
     } catch (err: unknown) {
-      setError(getErrorMessage(err) ?? "Failed to create guardian.");
+      if (isDuplicateConstraint(err)) {
+        setError(
+          "That guardian already exists (same first name, last name, and phone)."
+        );
+      } else {
+        setError(getErrorMessage(err) ?? "Failed to create guardian.");
+      }
     } finally {
       setSaving(false);
     }
@@ -183,7 +203,7 @@ export default function CreateGuardianInline({
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-700">Phone</label>
+          <label className="text-xs font-medium text-slate-700">Phone *</label>
           <input
             type="tel"
             value={form.phone}
@@ -212,7 +232,9 @@ export default function CreateGuardianInline({
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-700">Approved via</label>
+          <label className="text-xs font-medium text-slate-700">
+            Approved via
+          </label>
           <select
             value={form.approved_by_method}
             onChange={(e) =>
