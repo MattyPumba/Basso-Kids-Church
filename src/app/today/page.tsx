@@ -28,6 +28,7 @@ type GuardianRow = {
 };
 
 type ChildGuardianJoinRow = {
+  // Supabase embedded relationship can return an array depending on FK metadata
   guardian: GuardianRow[] | null;
 };
 
@@ -68,6 +69,17 @@ function todayISODate(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function uniqById(list: GuardianRow[]): GuardianRow[] {
+  const seen = new Set<string>();
+  const out: GuardianRow[] = [];
+  for (const g of list) {
+    if (seen.has(g.id)) continue;
+    seen.add(g.id);
+    out.push(g);
+  }
+  return out;
+}
+
 export default function TodayPage() {
   const router = useRouter();
 
@@ -100,6 +112,7 @@ export default function TodayPage() {
     });
   }, [router]);
 
+  // Search children while in search step
   useEffect(() => {
     let cancelled = false;
 
@@ -121,6 +134,7 @@ export default function TodayPage() {
         return;
       }
 
+      // If we've selected a child, we're not in search step anymore
       if (selectedChild) return;
 
       if (trimmedQuery.length < 2) {
@@ -161,41 +175,63 @@ export default function TodayPage() {
   }, [checkInOpen, trimmedQuery, selectedChild]);
 
   async function loadGuardiansForChild(childId: string) {
-    setGuardianError(null);
-    setGuardians([]);
+  setGuardianError(null);
+  setGuardians([]);
 
-    if (!supabase) {
-      setGuardianError("Missing Supabase env vars.");
+  if (!supabase) {
+    setGuardianError("Missing Supabase env vars.");
+    return;
+  }
+
+  setLoadingGuardians(true);
+  try {
+    // 1) Load link rows
+    const { data: links, error: linkErr } = await supabase
+      .from("child_guardians")
+      .select("guardian_id")
+      .eq("child_id", childId)
+      .eq("active", true);
+
+    if (linkErr) throw linkErr;
+
+    const ids = (links ?? [])
+      .map((r) => (r as { guardian_id: string | null }).guardian_id)
+      .filter((id): id is string => !!id);
+
+    if (ids.length === 0) {
+      setGuardians([]);
       return;
     }
 
-    setLoadingGuardians(true);
-    try {
-      const { data, error } = await supabase
-        .from("child_guardians")
-        .select(
-          "guardian:guardian_id (id, first_name, last_name, full_name, relationship, phone, active)"
-        )
-        .eq("child_id", childId)
-        .eq("active", true);
+    // 2) IMPORTANT: Supabase `.in()` can be picky — ensure we pass a plain string[] and
+    // select the exact columns that exist.
+    const { data: gs, error: gErr } = await supabase
+      .from("guardians")
+      .select("id, first_name, last_name, full_name, relationship, phone, active")
+      .in("id", ids as string[]);
 
-      if (error) throw error;
+    if (gErr) throw gErr;
 
-      const rows = (data ?? []) as ChildGuardianJoinRow[];
+    const list = ((gs ?? []) as GuardianRow[]).filter((g) => g.active !== false);
 
-      const list = rows
-        .map((r) => (r.guardian && r.guardian.length > 0 ? r.guardian[0] : null))
-        .filter((g): g is GuardianRow => !!g)
-        .filter((g) => g.active !== false);
-
-      setGuardians(list);
-    } catch (err: unknown) {
-      setGuardianError(getErrorMessage(err) ?? "Failed to load guardians.");
-      setGuardians([]);
-    } finally {
-      setLoadingGuardians(false);
+    // de-dupe
+    const seen = new Set<string>();
+    const deduped: GuardianRow[] = [];
+    for (const g of list) {
+      if (seen.has(g.id)) continue;
+      seen.add(g.id);
+      deduped.push(g);
     }
+
+    setGuardians(deduped);
+  } catch (err: unknown) {
+    setGuardianError(getErrorMessage(err) ?? "Failed to load guardians.");
+    setGuardians([]);
+  } finally {
+    setLoadingGuardians(false);
   }
+}
+
 
   async function startGuardianStep(child: ChildRow) {
     setSelectedChild(child);
@@ -208,7 +244,7 @@ export default function TodayPage() {
   async function linkGuardianToChild(childId: string, guardianId: string) {
     if (!supabase) throw new Error("Missing Supabase env vars.");
 
-    // Create link row
+    // If you ever add a unique index on (child_id, guardian_id) this will be protected too.
     const { error } = await supabase.from("child_guardians").insert({
       child_id: childId,
       guardian_id: guardianId,
@@ -260,6 +296,7 @@ export default function TodayPage() {
 
       if (error) throw error;
 
+      // reset modal state
       setCheckInOpen(false);
       setQuery("");
       setResults([]);
@@ -400,16 +437,14 @@ export default function TodayPage() {
                   Back
                 </button>
 
-                {guardians.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => setCreateGuardianOpen((v) => !v)}
-                    disabled={checkingIn || linkingGuardian}
-                    className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    {createGuardianOpen ? "Close" : "Create guardian"}
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setCreateGuardianOpen((v) => !v)}
+                  disabled={checkingIn || linkingGuardian}
+                  className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {createGuardianOpen ? "Close" : "Create guardian"}
+                </button>
               </div>
 
               {createGuardianOpen ? (
