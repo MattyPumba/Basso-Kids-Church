@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import CheckInModal from "@/components/CheckInModal";
 
 export default function TodayPage() {
   const router = useRouter();
+  const [checkInOpen, setCheckInOpen] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
@@ -40,11 +42,21 @@ export default function TodayPage() {
         {/* Primary action */}
         <button
           type="button"
+          onClick={() => setCheckInOpen(true)}
           className="w-full rounded-xl bg-teal-950 px-4 py-3 text-sm font-medium text-white"
         >
           Check In Child
         </button>
       </div>
+
+      {/* Check-in modal */}
+      <CheckInModal open={checkInOpen} onClose={() => setCheckInOpen(false)}>
+        <div className="rounded-xl border bg-slate-50 p-3">
+          <p className="text-sm text-slate-700">
+            Placeholder: child search UI goes here.
+          </p>
+        </div>
+      </CheckInModal>
     </main>
   );
 }
