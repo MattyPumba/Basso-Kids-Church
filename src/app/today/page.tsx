@@ -11,21 +11,21 @@ type ChildRow = {
   first_name: string;
   last_name: string;
   dob: string | null;
-  parent_phone: string | null;
   active: boolean | null;
 };
 
 type GuardianRow = {
   id: string;
-  full_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
   relationship: string | null;
   phone: string | null;
   active: boolean | null;
 };
 
 type ChildGuardianJoinRow = {
-  // When using supabase-js select with embedded relationship,
-  // the embedded record often comes back as an array.
+  // Supabase embedded relationship can return an array depending on relationship metadata
   guardian: GuardianRow[] | null;
 };
 
@@ -56,6 +56,15 @@ function groupKeyForAge(ageYears: number | null): "LITTLE" | "MIDDLE" | "OLDER" 
   if (ageYears <= 4) return "LITTLE";
   if (ageYears <= 10) return "MIDDLE";
   return "OLDER";
+}
+
+function todayISODate(): string {
+  // YYYY-MM-DD in local time
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 export default function TodayPage() {
@@ -123,11 +132,9 @@ export default function TodayPage() {
 
         const { data, error } = await supabase
           .from("children")
-          .select("id,first_name,last_name,dob,parent_phone,active")
+          .select("id,first_name,last_name,dob,active")
           .eq("active", true)
-          .or(
-            `first_name.ilike.${pattern},last_name.ilike.${pattern},parent_phone.ilike.${pattern}`
-          )
+          .or(`first_name.ilike.${pattern},last_name.ilike.${pattern}`)
           .order("last_name", { ascending: true })
           .limit(20);
 
@@ -161,12 +168,10 @@ export default function TodayPage() {
 
     setLoadingGuardians(true);
     try {
-      // Join via child_guardians → guardians
-      // NOTE: Supabase embedded relationship commonly returns an array
       const { data, error } = await supabase
         .from("child_guardians")
         .select(
-          "guardian:guardian_id (id, full_name, relationship, phone, active)"
+          "guardian:guardian_id (id, first_name, last_name, full_name, relationship, phone, active)"
         )
         .eq("child_id", childId)
         .eq("active", true);
@@ -209,10 +214,13 @@ export default function TodayPage() {
       const age = calculateAgeYears(selectedChild.dob);
       const group_key = groupKeyForAge(age);
 
+      const nowIso = new Date().toISOString();
+
       const { error } = await supabase.from("attendance").insert({
         child_id: selectedChild.id,
+        service_date: todayISODate(),
         group_key,
-        checked_in_at: new Date().toISOString(),
+        check_in_time: nowIso,
         checked_in_by_guardian_id: guardian.id,
       });
 
@@ -329,11 +337,7 @@ export default function TodayPage() {
                       <p className="text-sm font-medium text-slate-900">
                         {c.first_name} {c.last_name}
                       </p>
-                      <p className="text-xs text-slate-600">
-                        {c.parent_phone
-                          ? `Parent: ${c.parent_phone}`
-                          : "Parent: —"}
-                      </p>
+                      <p className="text-xs text-slate-600">Tap to select</p>
                     </button>
                   ))}
                 </div>
@@ -371,7 +375,7 @@ export default function TodayPage() {
                     No approved guardians are linked to this child yet.
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Next step: we’ll add an “Add guardian” action here.
+                    Add guardians from the child record (New Child flow).
                   </p>
                 </div>
               ) : (
@@ -385,7 +389,7 @@ export default function TodayPage() {
                       className="w-full px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
                     >
                       <p className="text-sm font-medium text-slate-900">
-                        {g.full_name}
+                        {g.full_name ?? "—"}
                       </p>
                       <p className="text-xs text-slate-600">
                         {g.relationship ? g.relationship : "—"}
