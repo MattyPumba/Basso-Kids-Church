@@ -27,6 +27,19 @@ type GuardianRow = {
   active: boolean | null;
 };
 
+type CheckedInRow = {
+  attendance_id: string;
+  child_id: string;
+  group_key: "LITTLE" | "MIDDLE" | "OLDER";
+  check_in_time: string;
+  children: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  }[] | null;
+};
+
+
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
@@ -64,7 +77,11 @@ function todayISODate(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
 
 export default function TodayPage() {
   const router = useRouter();
@@ -90,6 +107,11 @@ export default function TodayPage() {
   const [createGuardianOpen, setCreateGuardianOpen] = useState(false);
   const [linkingGuardian, setLinkingGuardian] = useState(false);
 
+  // Today list state
+  const [checkedIn, setCheckedIn] = useState<CheckedInRow[]>([]);
+  const [loadingToday, setLoadingToday] = useState(false);
+  const [todayError, setTodayError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!supabase) return;
 
@@ -97,6 +119,63 @@ export default function TodayPage() {
       if (!data.session) router.replace("/login");
     });
   }, [router]);
+
+  async function loadToday() {
+    setTodayError(null);
+
+    if (!supabase) {
+      setTodayError("Missing Supabase env vars.");
+      setCheckedIn([]);
+      return;
+    }
+
+    setLoadingToday(true);
+    try {
+      const serviceDate = todayISODate();
+
+      // Load checked-in today (not checked out yet) + join child name
+      const { data, error } = await supabase
+        .from("attendance")
+        .select(
+          "id: id, child_id, group_key, check_in_time, children:child_id (id, first_name, last_name)"
+        )
+        .eq("service_date", serviceDate)
+        .is("check_out_time", null)
+        .order("check_in_time", { ascending: true });
+
+      if (error) throw error;
+
+      const rows = (data ?? []) as Array<{
+  id: string;
+  child_id: string;
+  group_key: "LITTLE" | "MIDDLE" | "OLDER";
+  check_in_time: string;
+  children: { id: string; first_name: string; last_name: string }[] | null;
+}>;
+
+setCheckedIn(
+  rows.map((r) => ({
+    attendance_id: r.id,
+    child_id: r.child_id,
+    group_key: r.group_key,
+    check_in_time: r.check_in_time,
+    children: r.children,
+  }))
+);
+
+    } catch (err: unknown) {
+      setTodayError(getErrorMessage(err) ?? "Failed to load today list.");
+      setCheckedIn([]);
+    } finally {
+      setLoadingToday(false);
+    }
+  }
+
+  // Load Today list on mount
+  useEffect(() => {
+    loadToday();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Search children while in search step
   useEffect(() => {
@@ -120,7 +199,6 @@ export default function TodayPage() {
         return;
       }
 
-      // If we've selected a child, we're not in search step anymore
       if (selectedChild) return;
 
       if (trimmedQuery.length < 2) {
@@ -161,63 +239,61 @@ export default function TodayPage() {
   }, [checkInOpen, trimmedQuery, selectedChild]);
 
   async function loadGuardiansForChild(childId: string) {
-  setGuardianError(null);
-  setGuardians([]);
+    setGuardianError(null);
+    setGuardians([]);
 
-  if (!supabase) {
-    setGuardianError("Missing Supabase env vars.");
-    return;
-  }
-
-  setLoadingGuardians(true);
-  try {
-    // 1) Load link rows
-    const { data: links, error: linkErr } = await supabase
-      .from("child_guardians")
-      .select("guardian_id")
-      .eq("child_id", childId)
-      .eq("active", true);
-
-    if (linkErr) throw linkErr;
-
-    const ids = (links ?? [])
-      .map((r) => (r as { guardian_id: string | null }).guardian_id)
-      .filter((id): id is string => !!id);
-
-    if (ids.length === 0) {
-      setGuardians([]);
+    if (!supabase) {
+      setGuardianError("Missing Supabase env vars.");
       return;
     }
 
-    // 2) IMPORTANT: Supabase `.in()` can be picky — ensure we pass a plain string[] and
-    // select the exact columns that exist.
-    const { data: gs, error: gErr } = await supabase
-      .from("guardians")
-      .select("id, first_name, last_name, full_name, relationship, phone, active")
-      .in("id", ids as string[]);
+    setLoadingGuardians(true);
+    try {
+      const { data: links, error: linkErr } = await supabase
+        .from("child_guardians")
+        .select("guardian_id")
+        .eq("child_id", childId)
+        .eq("active", true);
 
-    if (gErr) throw gErr;
+      if (linkErr) throw linkErr;
 
-    const list = ((gs ?? []) as GuardianRow[]).filter((g) => g.active !== false);
+      const ids = (links ?? [])
+        .map((r) => (r as { guardian_id: string | null }).guardian_id)
+        .filter((id): id is string => !!id);
 
-    // de-dupe
-    const seen = new Set<string>();
-    const deduped: GuardianRow[] = [];
-    for (const g of list) {
-      if (seen.has(g.id)) continue;
-      seen.add(g.id);
-      deduped.push(g);
+      if (ids.length === 0) {
+        setGuardians([]);
+        return;
+      }
+
+      const { data: gs, error: gErr } = await supabase
+        .from("guardians")
+        .select(
+          "id, first_name, last_name, full_name, relationship, phone, active"
+        )
+        .in("id", ids as string[]);
+
+      if (gErr) throw gErr;
+
+      const list = ((gs ?? []) as GuardianRow[]).filter((g) => g.active !== false);
+
+      // de-dupe by id
+      const seen = new Set<string>();
+      const deduped: GuardianRow[] = [];
+      for (const g of list) {
+        if (seen.has(g.id)) continue;
+        seen.add(g.id);
+        deduped.push(g);
+      }
+
+      setGuardians(deduped);
+    } catch (err: unknown) {
+      setGuardianError(getErrorMessage(err) ?? "Failed to load guardians.");
+      setGuardians([]);
+    } finally {
+      setLoadingGuardians(false);
     }
-
-    setGuardians(deduped);
-  } catch (err: unknown) {
-    setGuardianError(getErrorMessage(err) ?? "Failed to load guardians.");
-    setGuardians([]);
-  } finally {
-    setLoadingGuardians(false);
   }
-}
-
 
   async function startGuardianStep(child: ChildRow) {
     setSelectedChild(child);
@@ -230,7 +306,6 @@ export default function TodayPage() {
   async function linkGuardianToChild(childId: string, guardianId: string) {
     if (!supabase) throw new Error("Missing Supabase env vars.");
 
-    // If you ever add a unique index on (child_id, guardian_id) this will be protected too.
     const { error } = await supabase.from("child_guardians").insert({
       child_id: childId,
       guardian_id: guardianId,
@@ -282,6 +357,9 @@ export default function TodayPage() {
 
       if (error) throw error;
 
+      // refresh Today list
+      await loadToday();
+
       // reset modal state
       setCheckInOpen(false);
       setQuery("");
@@ -304,6 +382,16 @@ export default function TodayPage() {
     setCreateGuardianOpen(false);
   }
 
+  const grouped = useMemo(() => {
+    const out: Record<"LITTLE" | "MIDDLE" | "OLDER", CheckedInRow[]> = {
+      LITTLE: [],
+      MIDDLE: [],
+      OLDER: [],
+    };
+    for (const r of checkedIn) out[r.group_key]?.push(r);
+    return out;
+  }, [checkedIn]);
+
   return (
     <main className="min-h-dvh bg-white">
       <header className="w-full bg-teal-950 text-white">
@@ -314,14 +402,77 @@ export default function TodayPage() {
       </header>
 
       <div className="mx-auto max-w-md px-4 py-6 space-y-4">
-        <div className="rounded-2xl border border-dashed bg-white p-6 text-center">
-          <p className="text-sm font-medium text-slate-700">
-            No children checked in yet
-          </p>
-          <p className="mt-1 text-sm text-slate-500">
-            Use the button below to check a child in.
-          </p>
-        </div>
+        {todayError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {todayError}
+          </div>
+        ) : null}
+
+        {loadingToday ? (
+          <div className="rounded-2xl border bg-white p-6 text-center">
+            <p className="text-sm text-slate-700">Loading…</p>
+          </div>
+        ) : checkedIn.length === 0 ? (
+          <div className="rounded-2xl border border-dashed bg-white p-6 text-center">
+            <p className="text-sm font-medium text-slate-700">
+              No children checked in yet
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Use the button below to check a child in.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {(["LITTLE", "MIDDLE", "OLDER"] as const).map((g) => (
+              <section key={g} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-slate-900">{g}</h2>
+                  <span className="text-xs text-slate-500">
+                    {grouped[g].length}
+                  </span>
+                </div>
+
+                {grouped[g].length === 0 ? (
+                  <div className="rounded-xl border bg-slate-50 p-3">
+                    <p className="text-sm text-slate-700">None</p>
+                  </div>
+                ) : (
+                  <div className="divide-y rounded-xl border">
+                    {grouped[g].map((row) => (
+                      <div
+                        key={row.attendance_id}
+                        className="flex items-center justify-between gap-3 px-3 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900">
+                            {row.children && row.children.length > 0
+  ? `${row.children[0].first_name} ${row.children[0].last_name}`
+  : "Unknown child"}
+
+                          </p>
+                          <p className="text-xs text-slate-600">
+                            Checked in {formatTime(row.check_in_time)}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="shrink-0 rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          onClick={() => {
+                            // Next step: open checkout modal
+                            // For now do nothing
+                          }}
+                        >
+                          Check out
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            ))}
+          </div>
+        )}
 
         <button
           type="button"
