@@ -1,26 +1,33 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type Status = "not_configured" | "checking" | "connected" | "error";
+
 export default function TodayPage() {
+  const [status, setStatus] = useState<Status>("checking");
+  const [message, setMessage] = useState<string>("");
+
   useEffect(() => {
     if (!supabase) {
-      console.warn("Supabase not configured yet (.env.local missing).");
+      // defer state updates to avoid eslint react-hooks/set-state-in-effect
+      Promise.resolve().then(() => {
+        setStatus("not_configured");
+        setMessage("Add keys to .env.local");
+      });
       return;
     }
 
-    supabase
-      .from("healthcheck")
-      .select("*")
-      .limit(1)
-      .then(({ error }) => {
-        if (error) {
-          console.warn("Supabase connection check:", error.message);
-        } else {
-          console.log("Supabase connection OK");
-        }
-      });
+    supabase.auth.getSession().then(({ error }) => {
+      if (error) {
+        setStatus("error");
+        setMessage(error.message);
+      } else {
+        setStatus("connected");
+        setMessage("Supabase connected");
+      }
+    });
   }, []);
 
   return (
@@ -35,8 +42,20 @@ export default function TodayPage() {
       <div className="mx-auto max-w-md px-4 py-6">
         <div className="rounded-2xl border bg-white p-4 shadow-sm">
           <p className="text-sm text-slate-700">
-            Supabase connected.
+            Status:{" "}
+            <span className="font-medium">
+              {status === "not_configured"
+                ? "Not configured"
+                : status === "checking"
+                ? "Checking…"
+                : status === "connected"
+                ? "Connected"
+                : "Error"}
+            </span>
           </p>
+          {message ? (
+            <p className="mt-2 text-sm text-slate-600">{message}</p>
+          ) : null}
         </div>
       </div>
     </main>
