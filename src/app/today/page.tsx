@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import CheckInModal from "@/components/CheckInModal";
 import CreateChildModal from "@/components/CreateChildModal";
+import CreateGuardianInline, {
+  GuardianRow as GuardianInlineRow,
+} from "@/components/CreateGuardianInline";
 
 type ChildRow = {
   id: string;
@@ -86,6 +89,9 @@ export default function TodayPage() {
   const [checkInError, setCheckInError] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
 
+  const [createGuardianOpen, setCreateGuardianOpen] = useState(false);
+  const [linkingGuardian, setLinkingGuardian] = useState(false);
+
   useEffect(() => {
     if (!supabase) return;
 
@@ -105,6 +111,7 @@ export default function TodayPage() {
         setResults([]);
         setSelectedChild(null);
         setGuardians([]);
+        setCreateGuardianOpen(false);
         return;
       }
 
@@ -177,10 +184,9 @@ export default function TodayPage() {
       const rows = (data ?? []) as ChildGuardianJoinRow[];
 
       const list = rows
-  .map((r) => (r.guardian && r.guardian.length > 0 ? r.guardian[0] : null))
-  .filter((g): g is GuardianRow => !!g)
-  .filter((g) => g.active !== false);
-
+        .map((r) => (r.guardian && r.guardian.length > 0 ? r.guardian[0] : null))
+        .filter((g): g is GuardianRow => !!g)
+        .filter((g) => g.active !== false);
 
       setGuardians(list);
     } catch (err: unknown) {
@@ -194,7 +200,38 @@ export default function TodayPage() {
   async function startGuardianStep(child: ChildRow) {
     setSelectedChild(child);
     setCheckInError(null);
+    setGuardianError(null);
+    setCreateGuardianOpen(false);
     await loadGuardiansForChild(child.id);
+  }
+
+  async function linkGuardianToChild(childId: string, guardianId: string) {
+    if (!supabase) throw new Error("Missing Supabase env vars.");
+
+    // Create link row
+    const { error } = await supabase.from("child_guardians").insert({
+      child_id: childId,
+      guardian_id: guardianId,
+      active: true,
+    });
+
+    if (error) throw error;
+  }
+
+  async function handleGuardianCreated(g: GuardianInlineRow) {
+    if (!selectedChild) return;
+
+    setGuardianError(null);
+    setLinkingGuardian(true);
+    try {
+      await linkGuardianToChild(selectedChild.id, g.id);
+      setCreateGuardianOpen(false);
+      await loadGuardiansForChild(selectedChild.id);
+    } catch (err: unknown) {
+      setGuardianError(getErrorMessage(err) ?? "Failed to link guardian.");
+    } finally {
+      setLinkingGuardian(false);
+    }
   }
 
   async function completeCheckIn(guardian: GuardianRow) {
@@ -228,6 +265,7 @@ export default function TodayPage() {
       setResults([]);
       setSelectedChild(null);
       setGuardians([]);
+      setCreateGuardianOpen(false);
     } catch (err: unknown) {
       setCheckInError(getErrorMessage(err) ?? "Check-in failed.");
     } finally {
@@ -240,6 +278,7 @@ export default function TodayPage() {
     setGuardians([]);
     setGuardianError(null);
     setCheckInError(null);
+    setCreateGuardianOpen(false);
   }
 
   return (
@@ -278,6 +317,7 @@ export default function TodayPage() {
           setGuardians([]);
           setGuardianError(null);
           setCheckInError(null);
+          setCreateGuardianOpen(false);
         }}
         query={query}
         onQueryChange={setQuery}
@@ -340,7 +380,7 @@ export default function TodayPage() {
               )}
             </>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="rounded-xl border bg-slate-50 p-3">
                 <p className="text-sm font-medium text-slate-900">
                   {selectedChild.first_name} {selectedChild.last_name}
@@ -350,16 +390,34 @@ export default function TodayPage() {
                 </p>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={backToSearch}
-                  disabled={checkingIn}
+                  disabled={checkingIn || linkingGuardian}
                   className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 disabled:opacity-50"
                 >
                   Back
                 </button>
+
+                {guardians.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setCreateGuardianOpen((v) => !v)}
+                    disabled={checkingIn || linkingGuardian}
+                    className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {createGuardianOpen ? "Close" : "Create guardian"}
+                  </button>
+                ) : null}
               </div>
+
+              {createGuardianOpen ? (
+                <CreateGuardianInline
+                  onCreated={handleGuardianCreated}
+                  disabled={checkingIn || linkingGuardian}
+                />
+              ) : null}
 
               {loadingGuardians ? (
                 <div className="rounded-xl border bg-slate-50 p-3">
@@ -370,9 +428,6 @@ export default function TodayPage() {
                   <p className="text-sm text-slate-700">
                     No approved guardians are linked to this child yet.
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Add guardians from the child record (New Child flow).
-                  </p>
                 </div>
               ) : (
                 <div className="divide-y rounded-xl border">
@@ -381,7 +436,7 @@ export default function TodayPage() {
                       key={g.id}
                       type="button"
                       onClick={() => completeCheckIn(g)}
-                      disabled={checkingIn}
+                      disabled={checkingIn || linkingGuardian}
                       className="w-full px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
                     >
                       <p className="text-sm font-medium text-slate-900">
