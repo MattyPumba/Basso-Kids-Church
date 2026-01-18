@@ -1,8 +1,22 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function TodayPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        router.replace("/login");
+      }
+    });
+  }, [router]);
+
   const status = !supabase
     ? { label: "Not configured", message: "Add keys to .env.local" }
     : { label: "Connected", message: "Supabase connected" };
