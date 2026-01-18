@@ -110,11 +110,11 @@ export default function TodayPage() {
     };
   }, [checkInOpen, trimmedQuery]);
 
-  function handleSelectChild(_child: ChildRow) {
-    // Next step will do actual check-in (attendance insert).
-    setCheckInOpen(false);
-    setQuery("");
-  }
+  function handleSelectChild() {
+  setCheckInOpen(false);
+  setQuery("");
+}
+
 
   return (
     <main className="min-h-dvh bg-white">
@@ -181,7 +181,8 @@ export default function TodayPage() {
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => handleSelectChild(c)}
+                  onClick={handleSelectChild}
+
                   className="w-full px-3 py-3 text-left hover:bg-slate-50"
                 >
                   <p className="text-sm font-medium text-slate-900">
