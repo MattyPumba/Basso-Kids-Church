@@ -25,7 +25,6 @@ type GuardianRow = {
 };
 
 type ChildGuardianJoinRow = {
-  // Supabase embedded relationship can return an array depending on relationship metadata
   guardian: GuardianRow[] | null;
 };
 
@@ -59,7 +58,6 @@ function groupKeyForAge(ageYears: number | null): "LITTLE" | "MIDDLE" | "OLDER" 
 }
 
 function todayISODate(): string {
-  // YYYY-MM-DD in local time
   const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -96,7 +94,6 @@ export default function TodayPage() {
     });
   }, [router]);
 
-  // Search children while in search step
   useEffect(() => {
     let cancelled = false;
 
@@ -117,7 +114,6 @@ export default function TodayPage() {
         return;
       }
 
-      // If we've selected a child, we're not in search step anymore
       if (selectedChild) return;
 
       if (trimmedQuery.length < 2) {
@@ -181,9 +177,10 @@ export default function TodayPage() {
       const rows = (data ?? []) as ChildGuardianJoinRow[];
 
       const list = rows
-        .map((r) => (r.guardian && r.guardian.length > 0 ? r.guardian[0] : null))
-        .filter((g): g is GuardianRow => !!g)
-        .filter((g) => g.active !== false);
+  .map((r) => (r.guardian && r.guardian.length > 0 ? r.guardian[0] : null))
+  .filter((g): g is GuardianRow => !!g)
+  .filter((g) => g.active !== false);
+
 
       setGuardians(list);
     } catch (err: unknown) {
@@ -226,7 +223,6 @@ export default function TodayPage() {
 
       if (error) throw error;
 
-      // reset modal state
       setCheckInOpen(false);
       setQuery("");
       setResults([]);
