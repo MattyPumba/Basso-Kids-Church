@@ -17,10 +17,6 @@ export default function TodayPage() {
     });
   }, [router]);
 
-  const status = !supabase
-    ? { label: "Not configured", message: "Add keys to .env.local" }
-    : { label: "Connected", message: "Supabase connected" };
-
   return (
     <main className="min-h-dvh bg-white">
       <header className="w-full bg-teal-950 text-white">
@@ -30,13 +26,24 @@ export default function TodayPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-md px-4 py-6">
-        <div className="rounded-2xl border bg-white p-4 shadow-sm">
-          <p className="text-sm text-slate-700">
-            Status: <span className="font-medium">{status.label}</span>
+      <div className="mx-auto max-w-md px-4 py-6 space-y-4">
+        {/* Empty state */}
+        <div className="rounded-2xl border border-dashed bg-white p-6 text-center">
+          <p className="text-sm font-medium text-slate-700">
+            No children checked in yet
           </p>
-          <p className="mt-2 text-sm text-slate-600">{status.message}</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Use the button below to check a child in.
+          </p>
         </div>
+
+        {/* Primary action */}
+        <button
+          type="button"
+          className="w-full rounded-xl bg-teal-950 px-4 py-3 text-sm font-medium text-white"
+        >
+          Check In Child
+        </button>
       </div>
     </main>
   );
