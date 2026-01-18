@@ -27,11 +27,6 @@ type GuardianRow = {
   active: boolean | null;
 };
 
-type ChildGuardianJoinRow = {
-  // Supabase embedded relationship can return an array depending on FK metadata
-  guardian: GuardianRow[] | null;
-};
-
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
@@ -69,16 +64,7 @@ function todayISODate(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function uniqById(list: GuardianRow[]): GuardianRow[] {
-  const seen = new Set<string>();
-  const out: GuardianRow[] = [];
-  for (const g of list) {
-    if (seen.has(g.id)) continue;
-    seen.add(g.id);
-    out.push(g);
-  }
-  return out;
-}
+
 
 export default function TodayPage() {
   const router = useRouter();
