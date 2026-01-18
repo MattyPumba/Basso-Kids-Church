@@ -6,12 +6,14 @@ type CheckInModalProps = {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  onNewChild?: () => void;
 };
 
 export default function CheckInModal({
   open,
   onClose,
   children,
+  onNewChild,
 }: CheckInModalProps) {
   const [query, setQuery] = useState("");
 
@@ -64,6 +66,17 @@ export default function CheckInModal({
             onChange={(e) => setQuery(e.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           />
+
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              onClick={onNewChild}
+              className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              disabled={!onNewChild}
+            >
+              New child
+            </button>
+          </div>
 
           {children}
         </div>
