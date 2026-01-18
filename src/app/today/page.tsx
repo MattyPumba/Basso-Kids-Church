@@ -11,10 +11,8 @@ export default function TodayPage() {
 
   useEffect(() => {
     if (!supabase) {
-      Promise.resolve().then(() => {
-        setStatus("not_configured");
-        setMessage("Add keys to .env.local");
-      });
+      setStatus("not_configured");
+      setMessage("Add keys to .env.local");
       return;
     }
 
@@ -52,9 +50,9 @@ export default function TodayPage() {
                 : "Error"}
             </span>
           </p>
-          {message ? (
+          {message && (
             <p className="mt-2 text-sm text-slate-600">{message}</p>
-          ) : null}
+          )}
         </div>
       </div>
     </main>
