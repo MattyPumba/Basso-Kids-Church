@@ -171,11 +171,11 @@ setCheckedIn(
     }
   }
 
-  // Load Today list on mount
-  useEffect(() => {
-    loadToday();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+ // Load Today list on mount
+useEffect(() => {
+  loadToday();
+}, []);
+
 
   // Search children while in search step
   useEffect(() => {
