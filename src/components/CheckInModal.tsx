@@ -1,32 +1,30 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 type CheckInModalProps = {
   open: boolean;
   onClose: () => void;
-  children?: ReactNode;
 };
 
-export default function CheckInModal({
-  open,
-  onClose,
-}: CheckInModalProps) {
+export default function CheckInModal({ open, onClose }: CheckInModalProps) {
   const [query, setQuery] = useState("");
 
+  function handleClose() {
+    setQuery("");
+    onClose();
+  }
+
   useEffect(() => {
-    if (!open) {
-      setQuery("");
-      return;
-    }
+    if (!open) return;
 
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") handleClose();
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -40,14 +38,12 @@ export default function CheckInModal({
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-slate-900">Check In</p>
-            <p className="text-xs text-slate-500">
-              Search and select a child
-            </p>
+            <p className="text-xs text-slate-500">Search and select a child</p>
           </div>
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="rounded-lg px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
             aria-label="Close"
           >
@@ -65,9 +61,7 @@ export default function CheckInModal({
           />
 
           <div className="rounded-xl border bg-slate-50 p-3">
-            <p className="text-sm text-slate-600">
-              No results yet
-            </p>
+            <p className="text-sm text-slate-600">No results yet</p>
             <p className="mt-1 text-xs text-slate-500">
               Search will connect to children records next.
             </p>
@@ -77,7 +71,7 @@ export default function CheckInModal({
         <div className="border-t px-4 py-3">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="w-full rounded-xl bg-slate-200 px-4 py-3 text-sm font-medium text-slate-900"
           >
             Cancel
