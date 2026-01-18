@@ -20,6 +20,16 @@ type ChildRow = {
   active: boolean | null;
 };
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Unknown error";
+  }
+}
+
 export default function TodayPage() {
   const router = useRouter();
   const [checkInOpen, setCheckInOpen] = useState(false);
@@ -85,9 +95,9 @@ export default function TodayPage() {
         if (cancelled) return;
 
         setResults((data ?? []) as ChildRow[]);
-      } catch (e: any) {
+      } catch (err: unknown) {
         if (cancelled) return;
-        setSearchError(e?.message ?? "Search failed.");
+        setSearchError(getErrorMessage(err) ?? "Search failed.");
         setResults([]);
       } finally {
         if (!cancelled) setSearching(false);
@@ -100,14 +110,10 @@ export default function TodayPage() {
     };
   }, [checkInOpen, trimmedQuery]);
 
-  function handleSelectChild(child: ChildRow) {
+  function handleSelectChild(_child: ChildRow) {
     // Next step will do actual check-in (attendance insert).
-    // For now, select + close to prove the flow works.
     setCheckInOpen(false);
     setQuery("");
-    // Optional: you can later show the selected child on Today.
-    // eslint-disable-next-line no-console
-    console.log("Selected child:", child);
   }
 
   return (
@@ -120,7 +126,6 @@ export default function TodayPage() {
       </header>
 
       <div className="mx-auto max-w-md px-4 py-6 space-y-4">
-        {/* Empty state */}
         <div className="rounded-2xl border border-dashed bg-white p-6 text-center">
           <p className="text-sm font-medium text-slate-700">
             No children checked in yet
@@ -130,7 +135,6 @@ export default function TodayPage() {
           </p>
         </div>
 
-        {/* Primary action */}
         <button
           type="button"
           onClick={() => setCheckInOpen(true)}
@@ -140,7 +144,6 @@ export default function TodayPage() {
         </button>
       </div>
 
-      {/* Check-in modal */}
       <CheckInModal
         open={checkInOpen}
         onClose={() => setCheckInOpen(false)}
@@ -194,7 +197,6 @@ export default function TodayPage() {
         </div>
       </CheckInModal>
 
-      {/* Create child modal */}
       <CreateChildModal
         open={createChildOpen}
         onClose={() => setCreateChildOpen(false)}

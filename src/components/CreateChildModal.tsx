@@ -35,6 +35,16 @@ const initialState: FormState = {
   notes: "",
 };
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Unknown error";
+  }
+}
+
 export default function CreateChildModal({
   open,
   onClose,
@@ -77,7 +87,9 @@ export default function CreateChildModal({
     setError(null);
 
     if (!supabase) {
-      setError("Missing Supabase env vars. Check NEXT_PUBLIC_SUPABASE_URL/ANON_KEY.");
+      setError(
+        "Missing Supabase env vars. Check NEXT_PUBLIC_SUPABASE_URL/ANON_KEY."
+      );
       return;
     }
 
@@ -101,13 +113,15 @@ export default function CreateChildModal({
         active: true,
       };
 
-      const { error: insertError } = await supabase.from("children").insert(payload);
+      const { error: insertError } = await supabase
+        .from("children")
+        .insert(payload);
       if (insertError) throw insertError;
 
       onCreated?.();
       handleClose();
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to create child.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err) ?? "Failed to create child.");
     } finally {
       setSaving(false);
     }
@@ -145,22 +159,30 @@ export default function CreateChildModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">First name *</label>
+              <label className="text-xs font-medium text-slate-700">
+                First name *
+              </label>
               <input
                 type="text"
                 value={form.first_name}
-                onChange={(e) => setForm((p) => ({ ...p, first_name: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, first_name: e.target.value }))
+                }
                 className="w-full rounded-xl border px-3 py-2 text-sm"
                 autoFocus
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">Last name *</label>
+              <label className="text-xs font-medium text-slate-700">
+                Last name *
+              </label>
               <input
                 type="text"
                 value={form.last_name}
-                onChange={(e) => setForm((p) => ({ ...p, last_name: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, last_name: e.target.value }))
+                }
                 className="w-full rounded-xl border px-3 py-2 text-sm"
               />
             </div>
@@ -172,17 +194,23 @@ export default function CreateChildModal({
               <input
                 type="date"
                 value={form.dob}
-                onChange={(e) => setForm((p) => ({ ...p, dob: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, dob: e.target.value }))
+                }
                 className="w-full rounded-xl border px-3 py-2 text-sm"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">Family key *</label>
+              <label className="text-xs font-medium text-slate-700">
+                Family key *
+              </label>
               <input
                 type="text"
                 value={form.family_key}
-                onChange={(e) => setForm((p) => ({ ...p, family_key: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, family_key: e.target.value }))
+                }
                 className="w-full rounded-xl border px-3 py-2 text-sm"
                 placeholder="e.g. Wendel"
               />
@@ -191,42 +219,58 @@ export default function CreateChildModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">Parent name</label>
+              <label className="text-xs font-medium text-slate-700">
+                Parent name
+              </label>
               <input
                 type="text"
                 value={form.parent_name}
-                onChange={(e) => setForm((p) => ({ ...p, parent_name: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, parent_name: e.target.value }))
+                }
                 className="w-full rounded-xl border px-3 py-2 text-sm"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">Parent phone</label>
+              <label className="text-xs font-medium text-slate-700">
+                Parent phone
+              </label>
               <input
                 type="tel"
                 value={form.parent_phone}
-                onChange={(e) => setForm((p) => ({ ...p, parent_phone: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, parent_phone: e.target.value }))
+                }
                 className="w-full rounded-xl border px-3 py-2 text-sm"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-700">Allergies</label>
+            <label className="text-xs font-medium text-slate-700">
+              Allergies
+            </label>
             <input
               type="text"
               value={form.allergies}
-              onChange={(e) => setForm((p) => ({ ...p, allergies: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, allergies: e.target.value }))
+              }
               className="w-full rounded-xl border px-3 py-2 text-sm"
               placeholder="e.g. Nuts, dairy"
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-700">Medical notes</label>
+            <label className="text-xs font-medium text-slate-700">
+              Medical notes
+            </label>
             <textarea
               value={form.medical_notes}
-              onChange={(e) => setForm((p) => ({ ...p, medical_notes: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, medical_notes: e.target.value }))
+              }
               className="w-full rounded-xl border px-3 py-2 text-sm"
               rows={3}
             />
