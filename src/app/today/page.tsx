@@ -32,13 +32,13 @@ type CheckedInRow = {
   child_id: string;
   group_key: "LITTLE" | "MIDDLE" | "OLDER";
   check_in_time: string;
+  // We keep this as an array because Supabase joins often return arrays
   children: {
     id: string;
     first_name: string;
     last_name: string;
   }[] | null;
 };
-
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -133,11 +133,23 @@ export default function TodayPage() {
     try {
       const serviceDate = todayISODate();
 
-      // Load checked-in today (not checked out yet) + join child name
+      // IMPORTANT FIX:
+      // Use the confirmed FK relationship name: attendance_child_id_fkey
+      // This makes the join stable so the child's name shows (no more "Unknown child").
       const { data, error } = await supabase
         .from("attendance")
         .select(
-          "id: id, child_id, group_key, check_in_time, children:child_id (id, first_name, last_name)"
+          `
+          id,
+          child_id,
+          group_key,
+          check_in_time,
+          child:children!attendance_child_id_fkey (
+            id,
+            first_name,
+            last_name
+          )
+        `
         )
         .eq("service_date", serviceDate)
         .is("check_out_time", null)
@@ -146,23 +158,23 @@ export default function TodayPage() {
       if (error) throw error;
 
       const rows = (data ?? []) as Array<{
-  id: string;
-  child_id: string;
-  group_key: "LITTLE" | "MIDDLE" | "OLDER";
-  check_in_time: string;
-  children: { id: string; first_name: string; last_name: string }[] | null;
-}>;
+        id: string;
+        child_id: string;
+        group_key: "LITTLE" | "MIDDLE" | "OLDER";
+        check_in_time: string;
+        child: { id: string; first_name: string; last_name: string }[] | null;
+      }>;
 
-setCheckedIn(
-  rows.map((r) => ({
-    attendance_id: r.id,
-    child_id: r.child_id,
-    group_key: r.group_key,
-    check_in_time: r.check_in_time,
-    children: r.children,
-  }))
-);
-
+      setCheckedIn(
+        rows.map((r) => ({
+          attendance_id: r.id,
+          child_id: r.child_id,
+          group_key: r.group_key,
+          check_in_time: r.check_in_time,
+          // Keep CheckedInRow's property name as "children" to avoid touching UI code.
+          children: r.child,
+        }))
+      );
     } catch (err: unknown) {
       setTodayError(getErrorMessage(err) ?? "Failed to load today list.");
       setCheckedIn([]);
@@ -171,11 +183,10 @@ setCheckedIn(
     }
   }
 
- // Load Today list on mount
-useEffect(() => {
-  loadToday();
-}, []);
-
+  // Load Today list on mount
+  useEffect(() => {
+    loadToday();
+  }, []);
 
   // Search children while in search step
   useEffect(() => {
@@ -357,7 +368,6 @@ useEffect(() => {
 
       if (error) throw error;
 
-      // refresh Today list
       await loadToday();
 
       // reset modal state
@@ -446,9 +456,8 @@ useEffect(() => {
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-slate-900">
                             {row.children && row.children.length > 0
-  ? `${row.children[0].first_name} ${row.children[0].last_name}`
-  : "Unknown child"}
-
+                              ? `${row.children[0].first_name} ${row.children[0].last_name}`
+                              : "Unknown child"}
                           </p>
                           <p className="text-xs text-slate-600">
                             Checked in {formatTime(row.check_in_time)}
@@ -460,7 +469,6 @@ useEffect(() => {
                           className="shrink-0 rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                           onClick={() => {
                             // Next step: open checkout modal
-                            // For now do nothing
                           }}
                         >
                           Check out
