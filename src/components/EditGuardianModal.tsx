@@ -32,7 +32,6 @@ export default function EditGuardianModal({
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [relationship, setRelationship] = useState("");
   const [phone, setPhone] = useState("");
 
   const canSave = useMemo(() => {
@@ -73,7 +72,7 @@ export default function EditGuardianModal({
 
         const { data, error } = await supabase
           .from("guardians")
-          .select("id, first_name, last_name, relationship, phone")
+          .select("id, first_name, last_name, phone")
           .eq("id", guardianId)
           .single();
 
@@ -82,7 +81,6 @@ export default function EditGuardianModal({
 
         setFirstName((data?.first_name ?? "") as string);
         setLastName((data?.last_name ?? "") as string);
-        setRelationship((data?.relationship ?? "") as string);
         setPhone((data?.phone ?? "") as string);
       } catch (err: unknown) {
         if (cancelled) return;
@@ -96,7 +94,7 @@ export default function EditGuardianModal({
     return () => {
       cancelled = true;
     };
-  }, [open, guardianId]);
+  }, [open, guardianId, handleClose]);
 
   async function handleSave() {
     if (!open) return;
@@ -119,12 +117,10 @@ export default function EditGuardianModal({
       const payload: {
         first_name: string;
         last_name: string;
-        relationship: string | null;
         phone: string;
       } = {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
-        relationship: relationship.trim().length > 0 ? relationship.trim() : null,
         phone: phone.trim(),
       };
 
@@ -217,16 +213,10 @@ export default function EditGuardianModal({
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-700">
-                  Relationship
-                </label>
-                <input
-                  value={relationship}
-                  onChange={(e) => setRelationship(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
-                  placeholder="Mum, Dad, Nan, Pop…"
-                />
+              <div className="rounded-xl border bg-slate-50 p-3">
+                <p className="text-sm text-slate-700">
+                  Relationship is now set per child (inside the child’s Edit screen).
+                </p>
               </div>
             </div>
           )}
