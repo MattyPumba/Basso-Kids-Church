@@ -15,7 +15,6 @@ export type GuardianRow = {
 type NewGuardianState = {
   first_name: string;
   last_name: string;
-  relationship_for_child: string;
   phone: string;
   approved_by_name: string;
   approved_by_method: "call" | "sms" | "in_person";
@@ -24,7 +23,6 @@ type NewGuardianState = {
 const initialGuardianState: NewGuardianState = {
   first_name: "",
   last_name: "",
-  relationship_for_child: "",
   phone: "",
   approved_by_name: "",
   approved_by_method: "in_person",
@@ -49,7 +47,7 @@ function isDuplicateConstraint(err: unknown): boolean {
 
 type CreateGuardianInlineProps = {
   initialName?: string;
-  onCreated: (guardian: GuardianRow, relationshipForChild?: string) => void;
+  onCreated: (guardian: GuardianRow) => void;
   disabled?: boolean;
 };
 
@@ -126,17 +124,8 @@ export default function CreateGuardianInline({
       if (error) throw error;
       if (!data) throw new Error("Guardian insert did not return data.");
 
-      const relationshipForChild =
-        form.relationship_for_child.trim().length > 0
-          ? form.relationship_for_child.trim()
-          : undefined;
-
-      onCreated(data as GuardianRow, relationshipForChild);
-      setForm({
-        ...initialGuardianState,
-        first_name: prefill.first,
-        last_name: prefill.last,
-      });
+      onCreated(data as GuardianRow);
+      setForm(initialGuardianState);
     } catch (err: unknown) {
       if (isDuplicateConstraint(err)) {
         setError(
@@ -181,40 +170,24 @@ export default function CreateGuardianInline({
           <input
             type="text"
             value={form.last_name}
-            onChange={(e) => setForm((p) => ({ ...p, last_name: e.target.value }))}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, last_name: e.target.value }))
+            }
             className="w-full rounded-xl border px-3 py-2 text-sm"
             disabled={disabled || saving}
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-700">
-            Relationship (for this child)
-          </label>
-          <input
-            type="text"
-            value={form.relationship_for_child}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, relationship_for_child: e.target.value }))
-            }
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder="e.g. Mum, Dad"
-            disabled={disabled || saving}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-700">Phone *</label>
-          <input
-            type="tel"
-            value={form.phone}
-            onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-            disabled={disabled || saving}
-          />
-        </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-slate-700">Phone *</label>
+        <input
+          type="tel"
+          value={form.phone}
+          onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+          disabled={disabled || saving}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -254,6 +227,13 @@ export default function CreateGuardianInline({
             <option value="in_person">in_person</option>
           </select>
         </div>
+      </div>
+
+      <div className="rounded-xl border bg-slate-50 p-3">
+        <p className="text-[11px] text-slate-600">
+          Relationship is now set per child on{" "}
+          <span className="font-mono">child_guardians.relationship</span>.
+        </p>
       </div>
 
       <button
