@@ -9,6 +9,7 @@ import CreateChildModal from "@/components/CreateChildModal";
 import CreateGuardianInline, {
   GuardianRow as GuardianInlineRow,
 } from "@/components/CreateGuardianInline";
+import ManageModal from "@/components/ManageModal";
 
 type ChildRow = {
   id: string;
@@ -183,7 +184,7 @@ export default function TodayPage() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [createPickupOpen, setCreatePickupOpen] = useState(false);
 
-  // Manage entry point (UI only for now; next step we’ll implement modals)
+  // Manage
   const [manageOpen, setManageOpen] = useState(false);
 
   useEffect(() => {
@@ -1052,50 +1053,7 @@ export default function TodayPage() {
         ) : null}
       </CheckOutModal>
 
-      {manageOpen ? (
-        <div
-          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-2"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-lg">
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Manage</p>
-                <p className="text-xs text-slate-500">
-                  Edit child or guardian details
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setManageOpen(false)}
-                className="rounded-lg px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="px-4 py-4 space-y-3">
-              <div className="rounded-xl border bg-slate-50 p-3">
-                <p className="text-sm text-slate-700">
-                  Coming next: search Children / Guardians and edit details.
-                </p>
-              </div>
-            </div>
-
-            <div className="border-t px-4 py-3">
-              <button
-                type="button"
-                onClick={() => setManageOpen(false)}
-                className="w-full rounded-xl bg-slate-200 px-4 py-3 text-sm font-medium text-slate-900"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ManageModal open={manageOpen} onClose={() => setManageOpen(false)} />
     </main>
   );
 }
