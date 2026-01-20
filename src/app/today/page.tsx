@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import CheckInModal from "@/components/CheckInModal";
 import CheckOutModal from "@/components/CheckOutModal";
-import CreateChildModal from "@/components/CreateChildModal";
 import CreateGuardianInline, {
   GuardianRow as GuardianInlineRow,
 } from "@/components/CreateGuardianInline";
@@ -145,7 +144,6 @@ export default function TodayPage() {
   const router = useRouter();
 
   const [checkInOpen, setCheckInOpen] = useState(false);
-  const [createChildOpen, setCreateChildOpen] = useState(false);
 
   const [query, setQuery] = useState("");
   const trimmedQuery = useMemo(() => query.trim(), [query]);
@@ -162,7 +160,6 @@ export default function TodayPage() {
   const [checkInError, setCheckInError] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
 
-  const [createGuardianOpen, setCreateGuardianOpen] = useState(false);
   const [linkingGuardian, setLinkingGuardian] = useState(false);
 
   // Auth visibility
@@ -335,7 +332,6 @@ export default function TodayPage() {
         setResults([]);
         setSelectedChild(null);
         setGuardians([]);
-        setCreateGuardianOpen(false);
         return;
       }
 
@@ -431,9 +427,9 @@ export default function TodayPage() {
 
       if (gErr) throw gErr;
 
-      const list = ((gs ?? []) as Array<Omit<GuardianRow, "relationship_for_child">>).filter(
-        (g) => g.active !== false
-      );
+      const list = (
+        (gs ?? []) as Array<Omit<GuardianRow, "relationship_for_child">>
+      ).filter((g) => g.active !== false);
 
       const seen = new Set<string>();
       const deduped: GuardianRow[] = [];
@@ -459,7 +455,6 @@ export default function TodayPage() {
     setSelectedChild(child);
     setCheckInError(null);
     setGuardianError(null);
-    setCreateGuardianOpen(false);
     await loadGuardiansForChild(child.id);
   }
 
@@ -509,22 +504,6 @@ export default function TodayPage() {
     if (error) throw error;
   }
 
-  async function handleGuardianCreated(g: GuardianInlineRow, relationshipForChild?: string) {
-    if (!selectedChild) return;
-
-    setGuardianError(null);
-    setLinkingGuardian(true);
-    try {
-      await linkGuardianToChild(selectedChild.id, g.id, relationshipForChild);
-      setCreateGuardianOpen(false);
-      await loadGuardiansForChild(selectedChild.id);
-    } catch (err: unknown) {
-      setGuardianError(getErrorMessage(err) ?? "Failed to link guardian.");
-    } finally {
-      setLinkingGuardian(false);
-    }
-  }
-
   async function completeCheckIn(guardian: GuardianRow) {
     setCheckInError(null);
 
@@ -570,7 +549,6 @@ export default function TodayPage() {
       setResults([]);
       setSelectedChild(null);
       setGuardians([]);
-      setCreateGuardianOpen(false);
     } catch (err: unknown) {
       setCheckInError(getErrorMessage(err) ?? "Check-in failed.");
     } finally {
@@ -625,9 +603,9 @@ export default function TodayPage() {
 
       if (gErr) throw gErr;
 
-      const list = ((gs ?? []) as Array<Omit<GuardianRow, "relationship_for_child">>).filter(
-        (g) => g.active !== false
-      );
+      const list = (
+        (gs ?? []) as Array<Omit<GuardianRow, "relationship_for_child">>
+      ).filter((g) => g.active !== false);
 
       const seen = new Set<string>();
       const deduped: GuardianRow[] = [];
@@ -657,7 +635,10 @@ export default function TodayPage() {
     await loadCheckoutGuardiansForChild(row.child_id);
   }
 
-  async function handlePickupGuardianCreated(g: GuardianInlineRow, relationshipForChild?: string) {
+  async function handlePickupGuardianCreated(
+    g: GuardianInlineRow,
+    relationshipForChild?: string
+  ) {
     if (!checkOutTarget) return;
 
     setCheckOutError(null);
@@ -902,11 +883,9 @@ export default function TodayPage() {
           setGuardians([]);
           setGuardianError(null);
           setCheckInError(null);
-          setCreateGuardianOpen(false);
         }}
         query={query}
         onQueryChange={setQuery}
-        onNewChild={() => setCreateChildOpen(true)}
       >
         <div className="space-y-2">
           {searchError ? (
@@ -943,7 +922,7 @@ export default function TodayPage() {
                 <div className="rounded-xl border bg-slate-50 p-3">
                   <p className="text-sm text-slate-700">No matches found.</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Use “New child” if they’re not in the system yet.
+                    Add them in Manage → Children.
                   </p>
                 </div>
               ) : (
@@ -983,30 +962,13 @@ export default function TodayPage() {
                     setGuardians([]);
                     setGuardianError(null);
                     setCheckInError(null);
-                    setCreateGuardianOpen(false);
                   }}
-                  disabled={checkingIn || linkingGuardian}
+                  disabled={checkingIn}
                   className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 disabled:opacity-50"
                 >
                   Back
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => setCreateGuardianOpen((v) => !v)}
-                  disabled={checkingIn || linkingGuardian}
-                  className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  {createGuardianOpen ? "Close" : "Create guardian"}
-                </button>
               </div>
-
-              {createGuardianOpen ? (
-                <CreateGuardianInline
-                  onCreated={handleGuardianCreated}
-                  disabled={checkingIn || linkingGuardian}
-                />
-              ) : null}
 
               {loadingGuardians ? (
                 <div className="rounded-xl border bg-slate-50 p-3">
@@ -1017,6 +979,9 @@ export default function TodayPage() {
                   <p className="text-sm text-slate-700">
                     No approved guardians are linked to this child yet.
                   </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Link guardians in Manage → Children.
+                  </p>
                 </div>
               ) : (
                 <div className="divide-y rounded-xl border">
@@ -1025,7 +990,7 @@ export default function TodayPage() {
                       key={g.id}
                       type="button"
                       onClick={() => completeCheckIn(g)}
-                      disabled={checkingIn || linkingGuardian}
+                      disabled={checkingIn}
                       className="w-full px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
                     >
                       <p className="text-sm font-medium text-slate-900">
@@ -1041,18 +1006,16 @@ export default function TodayPage() {
                   ))}
                 </div>
               )}
+
+              {checkingIn ? (
+                <div className="rounded-xl border bg-slate-50 p-3">
+                  <p className="text-sm text-slate-700">Checking in…</p>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
       </CheckInModal>
-
-      <CreateChildModal
-        open={createChildOpen}
-        onClose={() => setCreateChildOpen(false)}
-        onCreated={() => {
-          // stays simple for now
-        }}
-      />
 
       <CheckOutModal
         open={checkOutOpen}

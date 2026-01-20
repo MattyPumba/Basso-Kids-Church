@@ -9,7 +9,6 @@ type CheckInModalProps = {
   query: string;
   onQueryChange: (next: string) => void;
 
-  onNewChild?: () => void;
   children: ReactNode;
 };
 
@@ -18,7 +17,6 @@ export default function CheckInModal({
   onClose,
   query,
   onQueryChange,
-  onNewChild,
   children,
 }: CheckInModalProps) {
   const handleClose = useCallback(() => {
@@ -62,7 +60,7 @@ export default function CheckInModal({
           </button>
         </div>
 
-        <div className="px-4 py-4 space-y-3">
+        <div className="space-y-3 px-4 py-4">
           <input
             type="text"
             placeholder="Search by child name or parent phone"
@@ -70,17 +68,6 @@ export default function CheckInModal({
             onChange={(e) => onQueryChange(e.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           />
-
-          <div className="flex items-center justify-end">
-            <button
-              type="button"
-              onClick={onNewChild}
-              className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              disabled={!onNewChild}
-            >
-              New child
-            </button>
-          </div>
 
           {children}
         </div>
