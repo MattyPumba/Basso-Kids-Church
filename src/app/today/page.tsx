@@ -183,6 +183,9 @@ export default function TodayPage() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [createPickupOpen, setCreatePickupOpen] = useState(false);
 
+  // Manage entry point (UI only for now; next step we’ll implement modals)
+  const [manageOpen, setManageOpen] = useState(false);
+
   useEffect(() => {
     if (!supabase) return;
 
@@ -636,14 +639,24 @@ export default function TodayPage() {
               <h1 className="text-xl font-semibold">Kids Church Check-In</h1>
             </div>
 
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={!authEmail || loggingOut}
-              className="shrink-0 rounded-lg bg-white/10 px-3 py-2 text-xs font-medium text-white hover:bg-white/15 disabled:opacity-50"
-            >
-              {loggingOut ? "Logging out…" : "Log out"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setManageOpen(true)}
+                className="shrink-0 rounded-lg bg-white/10 px-3 py-2 text-xs font-medium text-white hover:bg-white/15"
+              >
+                Manage
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={!authEmail || loggingOut}
+                className="shrink-0 rounded-lg bg-white/10 px-3 py-2 text-xs font-medium text-white hover:bg-white/15 disabled:opacity-50"
+              >
+                {loggingOut ? "Logging out…" : "Log out"}
+              </button>
+            </div>
           </div>
 
           <div className="mt-2 text-xs opacity-90">
@@ -1038,6 +1051,51 @@ export default function TodayPage() {
           </div>
         ) : null}
       </CheckOutModal>
+
+      {manageOpen ? (
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-2"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-lg">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Manage</p>
+                <p className="text-xs text-slate-500">
+                  Edit child or guardian details
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setManageOpen(false)}
+                className="rounded-lg px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="px-4 py-4 space-y-3">
+              <div className="rounded-xl border bg-slate-50 p-3">
+                <p className="text-sm text-slate-700">
+                  Coming next: search Children / Guardians and edit details.
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setManageOpen(false)}
+                className="w-full rounded-xl bg-slate-200 px-4 py-3 text-sm font-medium text-slate-900"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
