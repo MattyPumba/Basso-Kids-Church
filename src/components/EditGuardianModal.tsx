@@ -94,7 +94,7 @@ export default function EditGuardianModal({
     return () => {
       cancelled = true;
     };
-  }, [open, guardianId, handleClose]);
+  }, [open, guardianId]);
 
   async function handleSave() {
     if (!open) return;
@@ -214,8 +214,10 @@ export default function EditGuardianModal({
               </div>
 
               <div className="rounded-xl border bg-slate-50 p-3">
-                <p className="text-sm text-slate-700">
-                  Relationship is now set per child (inside the child’s Edit screen).
+                <p className="text-xs text-slate-600">
+                  Relationship is now stored per-child on{" "}
+                  <span className="font-mono">child_guardians.relationship</span>.
+                  Edit it from the child’s “Approved guardians” list.
                 </p>
               </div>
             </div>
