@@ -1,16 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import EditChildModal from "@/components/EditChildModal";
 import EditGuardianModal from "@/components/EditGuardianModal";
 
-type TabKey = "children" | "guardians";
+type ManageModalProps = {
+  open: boolean;
+  onClose: () => void;
+};
 
 type ChildRow = {
   id: string;
-  first_name: string;
-  last_name: string;
+  first_name: string | null;
+  last_name: string | null;
   dob: string | null;
   active: boolean | null;
 };
@@ -20,14 +23,8 @@ type GuardianRow = {
   first_name: string | null;
   last_name: string | null;
   full_name: string | null;
-  relationship: string | null;
   phone: string | null;
   active: boolean | null;
-};
-
-type ManageModalProps = {
-  open: boolean;
-  onClose: () => void;
 };
 
 function getErrorMessage(err: unknown): string {
@@ -41,363 +38,344 @@ function getErrorMessage(err: unknown): string {
 }
 
 export default function ManageModal({ open, onClose }: ManageModalProps) {
-  const [tab, setTab] = useState<TabKey>("children");
+  const [tab, setTab] = useState<"children" | "guardians">("children");
 
-  const [childQuery, setChildQuery] = useState("");
-  const [guardianQuery, setGuardianQuery] = useState("");
-
-  const trimmedChildQuery = useMemo(() => childQuery.trim(), [childQuery]);
-  const trimmedGuardianQuery = useMemo(() => guardianQuery.trim(), [guardianQuery]);
-
+  const [childSearch, setChildSearch] = useState("");
+  const trimmedChildSearch = useMemo(() => childSearch.trim(), [childSearch]);
   const [childResults, setChildResults] = useState<ChildRow[]>([]);
+  const [childSearching, setChildSearching] = useState(false);
+  const [childError, setChildError] = useState<string | null>(null);
+
+  const [guardianSearch, setGuardianSearch] = useState("");
+  const trimmedGuardianSearch = useMemo(
+    () => guardianSearch.trim(),
+    [guardianSearch]
+  );
   const [guardianResults, setGuardianResults] = useState<GuardianRow[]>([]);
+  const [guardianSearching, setGuardianSearching] = useState(false);
+  const [guardianError, setGuardianError] = useState<string | null>(null);
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
+  const [editChildOpen, setEditChildOpen] = useState(false);
   const [editChildId, setEditChildId] = useState<string | null>(null);
+
+  const [editGuardianOpen, setEditGuardianOpen] = useState(false);
   const [editGuardianId, setEditGuardianId] = useState<string | null>(null);
-
-  const handleClose = useCallback(() => {
-    onClose();
-  }, [onClose]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") handleClose();
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, handleClose]);
 
   useEffect(() => {
     if (!open) return;
 
     setTab("children");
-    setChildQuery("");
-    setGuardianQuery("");
+
+    setChildSearch("");
     setChildResults([]);
+    setChildError(null);
+
+    setGuardianSearch("");
     setGuardianResults([]);
-    setError(null);
-    setLoading(false);
+    setGuardianError(null);
+
+    setEditChildOpen(false);
     setEditChildId(null);
+
+    setEditGuardianOpen(false);
     setEditGuardianId(null);
   }, [open]);
 
-  const runChildrenSearch = useCallback(
-    async (query: string) => {
-      setError(null);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function runChildSearch() {
+      setChildError(null);
+      setChildResults([]);
+
+      if (!open) return;
+      if (tab !== "children") return;
 
       if (!supabase) {
-        setError("Missing Supabase env vars.");
-        setChildResults([]);
+        setChildError("Missing Supabase env vars.");
         return;
       }
 
-      if (query.trim().length < 2) {
-        setChildResults([]);
-        return;
-      }
+      if (trimmedChildSearch.length < 2) return;
 
-      setLoading(true);
+      setChildSearching(true);
       try {
-        const q = query.trim().replace(/%/g, "\\%").replace(/_/g, "\\_");
+        const q = trimmedChildSearch.replace(/%/g, "\\%").replace(/_/g, "\\_");
         const pattern = `%${q}%`;
 
         const { data, error } = await supabase
           .from("children")
-          .select("id,first_name,last_name,dob,active")
+          .select("id, first_name, last_name, dob, active")
           .eq("active", true)
           .or(`first_name.ilike.${pattern},last_name.ilike.${pattern}`)
           .order("last_name", { ascending: true })
-          .limit(25);
+          .limit(30);
 
         if (error) throw error;
+        if (cancelled) return;
 
         setChildResults((data ?? []) as ChildRow[]);
       } catch (err: unknown) {
-        setError(getErrorMessage(err) ?? "Search failed.");
+        if (cancelled) return;
+        setChildError(getErrorMessage(err) ?? "Search failed.");
         setChildResults([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setChildSearching(false);
       }
-    },
-    [setChildResults]
-  );
+    }
 
-  const runGuardiansSearch = useCallback(
-    async (query: string) => {
-      setError(null);
+    runChildSearch();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tab, trimmedChildSearch]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function runGuardianSearch() {
+      setGuardianError(null);
+      setGuardianResults([]);
+
+      if (!open) return;
+      if (tab !== "guardians") return;
 
       if (!supabase) {
-        setError("Missing Supabase env vars.");
-        setGuardianResults([]);
+        setGuardianError("Missing Supabase env vars.");
         return;
       }
 
-      if (query.trim().length < 2) {
-        setGuardianResults([]);
-        return;
-      }
+      if (trimmedGuardianSearch.length < 2) return;
 
-      setLoading(true);
+      setGuardianSearching(true);
       try {
-        const q = query.trim().replace(/%/g, "\\%").replace(/_/g, "\\_");
+        const q = trimmedGuardianSearch.replace(/%/g, "\\%").replace(/_/g, "\\_");
         const pattern = `%${q}%`;
 
         const { data, error } = await supabase
           .from("guardians")
-          .select("id,first_name,last_name,full_name,relationship,phone,active")
+          .select("id, first_name, last_name, full_name, phone, active")
           .eq("active", true)
           .or(`full_name.ilike.${pattern},phone.ilike.${pattern}`)
           .order("full_name", { ascending: true })
-          .limit(25);
+          .limit(30);
 
         if (error) throw error;
+        if (cancelled) return;
 
         setGuardianResults((data ?? []) as GuardianRow[]);
       } catch (err: unknown) {
-        setError(getErrorMessage(err) ?? "Search failed.");
+        if (cancelled) return;
+        setGuardianError(getErrorMessage(err) ?? "Search failed.");
         setGuardianResults([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setGuardianSearching(false);
       }
-    },
-    [setGuardianResults]
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      if (!open) return;
-      if (tab !== "children") return;
-
-      try {
-        await runChildrenSearch(trimmedChildQuery);
-      } catch {
-        // handled
-      }
-
-      if (cancelled) return;
     }
 
-    run();
-
+    runGuardianSearch();
     return () => {
       cancelled = true;
     };
-  }, [open, tab, trimmedChildQuery, runChildrenSearch]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      if (!open) return;
-      if (tab !== "guardians") return;
-
-      try {
-        await runGuardiansSearch(trimmedGuardianQuery);
-      } catch {
-        // handled
-      }
-
-      if (cancelled) return;
-    }
-
-    run();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, tab, trimmedGuardianQuery, runGuardiansSearch]);
+  }, [open, tab, trimmedGuardianSearch]);
 
   if (!open) return null;
 
-  const activeQuery = tab === "children" ? childQuery : guardianQuery;
-  const setActiveQuery = tab === "children" ? setChildQuery : setGuardianQuery;
-
   return (
-    <>
-      <div
-        className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-2"
-        role="dialog"
-        aria-modal="true"
-      >
-        <div className="w-full max-w-md rounded-2xl bg-white shadow-lg">
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Manage</p>
-              <p className="text-xs text-slate-500">Edit child or guardian details</p>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-lg px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
-              aria-label="Close"
-            >
-              Close
-            </button>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-lg">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Manage</p>
+            <p className="text-xs text-slate-500">
+              Search and edit children + guardians
+            </p>
           </div>
 
-          <div className="px-4 py-4 space-y-3">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setTab("children")}
-                className={
-                  tab === "children"
-                    ? "flex-1 rounded-xl bg-teal-950 px-3 py-2 text-xs font-semibold text-white"
-                    : "flex-1 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"
-                }
-              >
-                Children
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab("guardians")}
-                className={
-                  tab === "guardians"
-                    ? "flex-1 rounded-xl bg-teal-950 px-3 py-2 text-xs font-semibold text-white"
-                    : "flex-1 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"
-                }
-              >
-                Guardians
-              </button>
-            </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            Close
+          </button>
+        </div>
 
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold text-slate-700">
-                Search {tab === "children" ? "children" : "guardians"}
-              </label>
-              <input
-                value={activeQuery}
-                onChange={(e) => setActiveQuery(e.target.value)}
-                placeholder={tab === "children" ? "Name…" : "Name or phone…"}
-                className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
-              />
-              <p className="text-[11px] text-slate-500">Type at least 2 characters.</p>
-            </div>
+        <div className="px-4 py-3">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setTab("children")}
+              className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium ${
+                tab === "children"
+                  ? "bg-teal-950 text-white border-teal-950"
+                  : "bg-white text-slate-700"
+              }`}
+            >
+              Children
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("guardians")}
+              className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium ${
+                tab === "guardians"
+                  ? "bg-teal-950 text-white border-teal-950"
+                  : "bg-white text-slate-700"
+              }`}
+            >
+              Guardians
+            </button>
+          </div>
+        </div>
 
-            {error ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                {error}
+        <div className="max-h-[70vh] overflow-y-auto px-4 pb-4 space-y-3">
+          {tab === "children" ? (
+            <>
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Search children
+                </label>
+                <input
+                  value={childSearch}
+                  onChange={(e) => setChildSearch(e.target.value)}
+                  placeholder="Type name…"
+                  className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
+                />
               </div>
-            ) : null}
 
-            {loading ? (
-              <div className="rounded-xl border bg-slate-50 p-3">
-                <p className="text-sm text-slate-700">Searching…</p>
-              </div>
-            ) : tab === "children" ? (
-              childResults.length === 0 && trimmedChildQuery.length >= 2 ? (
+              {childError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  {childError}
+                </div>
+              ) : null}
+
+              {childSearching ? (
+                <div className="rounded-xl border bg-slate-50 p-3">
+                  <p className="text-sm text-slate-700">Searching…</p>
+                </div>
+              ) : trimmedChildSearch.length >= 2 && childResults.length === 0 ? (
                 <div className="rounded-xl border bg-slate-50 p-3">
                   <p className="text-sm text-slate-700">No matches found.</p>
                 </div>
-              ) : childResults.length === 0 ? (
-                <div className="rounded-xl border bg-slate-50 p-3">
-                  <p className="text-sm text-slate-700">Search to begin.</p>
-                </div>
-              ) : (
+              ) : childResults.length === 0 ? null : (
                 <div className="divide-y rounded-xl border">
                   {childResults.map((c) => (
-                    <div
+                    <button
                       key={c.id}
-                      className="flex items-center justify-between gap-3 px-3 py-3"
+                      type="button"
+                      onClick={() => {
+                        setEditChildId(c.id);
+                        setEditChildOpen(true);
+                      }}
+                      className="w-full px-3 py-3 text-left hover:bg-slate-50"
                     >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-900">
-                          {c.first_name} {c.last_name}
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          {c.dob ? `DOB ${c.dob}` : "DOB —"}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        className="shrink-0 rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                        onClick={() => setEditChildId(c.id)}
-                      >
-                        Edit
-                      </button>
-                    </div>
+                      <p className="text-sm font-medium text-slate-900">
+                        {(c.first_name ?? "").trim()} {(c.last_name ?? "").trim()}
+                      </p>
+                      <p className="text-xs text-slate-600">Tap to edit</p>
+                    </button>
                   ))}
                 </div>
-              )
-            ) : guardianResults.length === 0 && trimmedGuardianQuery.length >= 2 ? (
-              <div className="rounded-xl border bg-slate-50 p-3">
-                <p className="text-sm text-slate-700">No matches found.</p>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Search guardians
+                </label>
+                <input
+                  value={guardianSearch}
+                  onChange={(e) => setGuardianSearch(e.target.value)}
+                  placeholder="Type name or phone…"
+                  className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
+                />
               </div>
-            ) : guardianResults.length === 0 ? (
-              <div className="rounded-xl border bg-slate-50 p-3">
-                <p className="text-sm text-slate-700">Search to begin.</p>
-              </div>
-            ) : (
-              <div className="divide-y rounded-xl border">
-                {guardianResults.map((g) => (
-                  <div
-                    key={g.id}
-                    className="flex items-center justify-between gap-3 px-3 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-900">
+
+              {guardianError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  {guardianError}
+                </div>
+              ) : null}
+
+              {guardianSearching ? (
+                <div className="rounded-xl border bg-slate-50 p-3">
+                  <p className="text-sm text-slate-700">Searching…</p>
+                </div>
+              ) : trimmedGuardianSearch.length >= 2 &&
+                guardianResults.length === 0 ? (
+                <div className="rounded-xl border bg-slate-50 p-3">
+                  <p className="text-sm text-slate-700">No matches found.</p>
+                </div>
+              ) : guardianResults.length === 0 ? null : (
+                <div className="divide-y rounded-xl border">
+                  {guardianResults.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => {
+                        setEditGuardianId(g.id);
+                        setEditGuardianOpen(true);
+                      }}
+                      className="w-full px-3 py-3 text-left hover:bg-slate-50"
+                    >
+                      <p className="text-sm font-medium text-slate-900">
                         {g.full_name ?? "—"}
                       </p>
                       <p className="text-xs text-slate-600">
                         {g.phone ? g.phone : "Phone —"}
-                        {g.relationship ? ` • ${g.relationship}` : ""}
                       </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                      onClick={() => setEditGuardianId(g.id)}
-                    >
-                      Edit
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Tap to edit
+                      </p>
                     </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
-          <div className="border-t px-4 py-3">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="w-full rounded-xl bg-slate-200 px-4 py-3 text-sm font-medium text-slate-900"
-            >
-              Done
-            </button>
-          </div>
+        <div className="border-t px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-slate-200 px-4 py-3 text-sm font-medium text-slate-900"
+          >
+            Close
+          </button>
         </div>
       </div>
 
       <EditChildModal
-        open={!!editChildId}
+        open={editChildOpen}
         childId={editChildId}
-        onClose={() => setEditChildId(null)}
-        onUpdated={async () => {
-          if (tab === "children") {
-            await runChildrenSearch(childQuery);
-          }
+        onClose={() => {
+          setEditChildOpen(false);
+          setEditChildId(null);
+        }}
+        onUpdated={() => {
+          setEditChildOpen(false);
+          setEditChildId(null);
         }}
       />
 
       <EditGuardianModal
-        open={!!editGuardianId}
+        open={editGuardianOpen}
         guardianId={editGuardianId}
-        onClose={() => setEditGuardianId(null)}
-        onUpdated={async () => {
-          if (tab === "guardians") {
-            await runGuardiansSearch(guardianQuery);
-          }
+        onClose={() => {
+          setEditGuardianOpen(false);
+          setEditGuardianId(null);
+        }}
+        onUpdated={() => {
+          setEditGuardianOpen(false);
+          setEditGuardianId(null);
         }}
       />
-    </>
+    </div>
   );
 }
