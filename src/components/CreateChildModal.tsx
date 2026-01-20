@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import CreateGuardianInline, {
-  GuardianRow,
+  GuardianRow as GuardianInlineRow,
 } from "@/components/CreateGuardianInline";
 
 type CreateChildModalProps = {
@@ -12,16 +12,25 @@ type CreateChildModalProps = {
   onCreated?: () => void;
 };
 
-type FormState = {
+type GuardianRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  phone: string | null;
+  active: boolean | null;
+};
+
+type NewChildState = {
   first_name: string;
   last_name: string;
-  dob: string; // YYYY-MM-DD
+  dob: string;
   allergies: string;
   medical_notes: string;
   notes: string;
 };
 
-const initialState: FormState = {
+const initialChildState: NewChildState = {
   first_name: "",
   last_name: "",
   dob: "",
@@ -45,24 +54,21 @@ export default function CreateChildModal({
   onClose,
   onCreated,
 }: CreateChildModalProps) {
-  const [form, setForm] = useState<FormState>(initialState);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Guardian linking UI (search existing guardians + select)
-  const [guardianQuery, setGuardianQuery] = useState("");
-  const trimmedGuardianQuery = useMemo(
-    () => guardianQuery.trim(),
-    [guardianQuery]
-  );
+  const [form, setForm] = useState<NewChildState>(initialChildState);
 
-  const [guardianResults, setGuardianResults] = useState<GuardianRow[]>([]);
-  const [guardianSearching, setGuardianSearching] = useState(false);
-  const [guardianSearchError, setGuardianSearchError] = useState<string | null>(
-    null
-  );
+  const [linkedGuardians, setLinkedGuardians] = useState<GuardianRow[]>([]);
+  const [linking, setLinking] = useState(false);
+  const [guardianError, setGuardianError] = useState<string | null>(null);
 
-  const [selectedGuardians, setSelectedGuardians] = useState<GuardianRow[]>([]);
+  const [search, setSearch] = useState("");
+  const trimmedSearch = useMemo(() => search.trim(), [search]);
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<GuardianRow[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
   const [createGuardianOpen, setCreateGuardianOpen] = useState(false);
 
   const canSave = useMemo(() => {
@@ -71,24 +77,11 @@ export default function CreateChildModal({
       form.last_name.trim().length > 0 &&
       form.dob.trim().length > 0
     );
-  }, [form]);
+  }, [form.first_name, form.last_name, form.dob]);
 
   const handleClose = useCallback(() => {
-    if (saving) return;
-
-    setError(null);
-    setForm(initialState);
-
-    setGuardianQuery("");
-    setGuardianResults([]);
-    setGuardianSearching(false);
-    setGuardianSearchError(null);
-    setSelectedGuardians([]);
-
-    setCreateGuardianOpen(false);
-
     onClose();
-  }, [onClose, saving]);
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -101,135 +94,169 @@ export default function CreateChildModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, handleClose]);
 
-  // Search guardians while modal open
   useEffect(() => {
-    let cancelled = false;
+    if (!open) return;
 
-    async function run() {
-      setGuardianSearchError(null);
+    setError(null);
+    setGuardianError(null);
+    setSearchError(null);
+    setSearchResults([]);
+    setSearch("");
+    setCreateGuardianOpen(false);
 
-      if (!open) return;
+    setForm(initialChildState);
+    setLinkedGuardians([]);
+  }, [open]);
 
-      if (!supabase) {
-        setGuardianSearchError("Missing Supabase env vars.");
-        setGuardianResults([]);
-        return;
-      }
+  async function runSearch() {
+    setSearchError(null);
+    setSearchResults([]);
 
-      if (trimmedGuardianQuery.length < 2) {
-        setGuardianResults([]);
-        return;
-      }
+    if (!open) return;
 
-      setGuardianSearching(true);
-      try {
-        const q = trimmedGuardianQuery.replace(/%/g, "\\%").replace(/_/g, "\\_");
-        const pattern = `%${q}%`;
-
-        const { data, error } = await supabase
-          .from("guardians")
-          .select("id,first_name,last_name,full_name,relationship,phone,active")
-          .eq("active", true)
-          .or(`full_name.ilike.${pattern},phone.ilike.${pattern}`)
-          .order("full_name", { ascending: true })
-          .limit(20);
-
-        if (error) throw error;
-        if (cancelled) return;
-
-        setGuardianResults((data ?? []) as GuardianRow[]);
-      } catch (err: unknown) {
-        if (cancelled) return;
-        setGuardianSearchError(getErrorMessage(err) ?? "Guardian search failed.");
-        setGuardianResults([]);
-      } finally {
-        if (!cancelled) setGuardianSearching(false);
-      }
+    if (!supabase) {
+      setSearchError("Missing Supabase env vars.");
+      return;
     }
 
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, trimmedGuardianQuery]);
+    if (trimmedSearch.length < 2) return;
 
-  function addGuardianToSelection(g: GuardianRow) {
-    setSelectedGuardians((prev) => {
-      if (prev.some((x) => x.id === g.id)) return prev;
-      return [...prev, g];
-    });
+    setSearching(true);
+    try {
+      const q = trimmedSearch.replace(/%/g, "\\%").replace(/_/g, "\\_");
+      const pattern = `%${q}%`;
+
+      const { data, error } = await supabase
+        .from("guardians")
+        .select("id, first_name, last_name, full_name, phone, active")
+        .eq("active", true)
+        .or(`full_name.ilike.${pattern},phone.ilike.${pattern}`)
+        .order("full_name", { ascending: true })
+        .limit(25);
+
+      if (error) throw error;
+
+      const linkedIds = new Set(linkedGuardians.map((g) => g.id));
+      const list = ((data ?? []) as GuardianRow[]).filter((g) => !linkedIds.has(g.id));
+
+      setSearchResults(list);
+    } catch (err: unknown) {
+      setSearchError(getErrorMessage(err) ?? "Search failed.");
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
   }
 
-  function removeGuardianFromSelection(id: string) {
-    setSelectedGuardians((prev) => prev.filter((g) => g.id !== id));
+  useEffect(() => {
+    runSearch();
+  }, [trimmedSearch, linkedGuardians, open]);
+
+  function addExistingGuardian(g: GuardianRow) {
+    setGuardianError(null);
+
+    const seen = new Set(linkedGuardians.map((x) => x.id));
+    if (seen.has(g.id)) return;
+
+    setLinkedGuardians((prev) => [...prev, g]);
+    setSearch("");
+    setSearchResults([]);
   }
 
-  function handleGuardianCreated(g: GuardianRow) {
-    addGuardianToSelection(g);
-    setCreateGuardianOpen(false);
-    setGuardianQuery(g.full_name ?? "");
+  function removeLinkedGuardian(id: string) {
+    setGuardianError(null);
+    setLinkedGuardians((prev) => prev.filter((g) => g.id !== id));
   }
 
-  if (!open) return null;
+  async function handleGuardianCreatedInline(
+    g: GuardianInlineRow,
+    _relationshipForChild?: string
+  ) {
+    setGuardianError(null);
+    setLinking(true);
+    try {
+      const asGuardian: GuardianRow = {
+        id: g.id,
+        first_name: g.first_name ?? null,
+        last_name: g.last_name ?? null,
+        full_name: g.full_name ?? null,
+        phone: g.phone ?? null,
+        active: g.active ?? null,
+      };
+
+      setLinkedGuardians((prev) => {
+        const seen = new Set(prev.map((x) => x.id));
+        if (seen.has(asGuardian.id)) return prev;
+        return [...prev, asGuardian];
+      });
+
+      setCreateGuardianOpen(false);
+      setSearch("");
+      setSearchResults([]);
+    } catch (err: unknown) {
+      setGuardianError(getErrorMessage(err) ?? "Failed to add new guardian.");
+    } finally {
+      setLinking(false);
+    }
+  }
 
   async function handleSave() {
     setError(null);
+    setGuardianError(null);
 
     if (!supabase) {
-      setError(
-        "Missing Supabase env vars. Check NEXT_PUBLIC_SUPABASE_URL/ANON_KEY."
-      );
+      setError("Missing Supabase env vars.");
       return;
     }
 
     if (!canSave) {
-      setError("Please fill first name, last name, and DOB.");
+      setError("First name, last name, and DOB are required.");
       return;
     }
 
     setSaving(true);
     try {
-      const payload = {
+      const childPayload = {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         dob: form.dob.trim(),
-        allergies: form.allergies.trim() || null,
-        medical_notes: form.medical_notes.trim() || null,
-        notes: form.notes.trim() || null,
+        allergies: form.allergies.trim().length > 0 ? form.allergies.trim() : null,
+        medical_notes:
+          form.medical_notes.trim().length > 0 ? form.medical_notes.trim() : null,
+        notes: form.notes.trim().length > 0 ? form.notes.trim() : null,
         active: true,
       };
 
-      const { data: childData, error: insertError } = await supabase
+      const { data: child, error: childErr } = await supabase
         .from("children")
-        .insert(payload)
+        .insert(childPayload)
         .select("id")
         .single();
 
-      if (insertError) throw insertError;
-      if (!childData?.id) throw new Error("Child insert did not return an id.");
+      if (childErr) throw childErr;
+      if (!child?.id) throw new Error("Child insert did not return id.");
 
-      if (selectedGuardians.length > 0) {
-        const links = selectedGuardians.map((g) => ({
-          child_id: childData.id,
+      if (linkedGuardians.length > 0) {
+        const linksPayload = linkedGuardians.map((g) => ({
+          child_id: child.id as string,
           guardian_id: g.id,
           active: true,
         }));
 
-        const { error: linkErr } = await supabase
-          .from("child_guardians")
-          .insert(links);
-
+        const { error: linkErr } = await supabase.from("child_guardians").insert(linksPayload);
         if (linkErr) throw linkErr;
       }
 
       onCreated?.();
       handleClose();
     } catch (err: unknown) {
-      setError(getErrorMessage(err) ?? "Failed to create child.");
+      setError(getErrorMessage(err) ?? "Failed to save child.");
     } finally {
       setSaving(false);
     }
   }
+
+  if (!open) return null;
 
   return (
     <div
@@ -237,7 +264,7 @@ export default function CreateChildModal({
       role="dialog"
       aria-modal="true"
     >
-      <div className="flex max-h-[90dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-lg">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-lg">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-slate-900">New Child</p>
@@ -248,13 +275,12 @@ export default function CreateChildModal({
             type="button"
             onClick={handleClose}
             className="rounded-lg px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
-            aria-label="Close"
           >
             Close
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        <div className="max-h-[70vh] overflow-y-auto px-4 py-4 space-y-4">
           {error ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
               {error}
@@ -262,63 +288,55 @@ export default function CreateChildModal({
           ) : null}
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-700">
                 First name *
               </label>
               <input
-                type="text"
                 value={form.first_name}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, first_name: e.target.value }))
-                }
-                className="w-full rounded-xl border px-3 py-2 text-sm"
-                autoFocus
+                onChange={(e) => setForm((p) => ({ ...p, first_name: e.target.value }))}
+                className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-700">
                 Last name *
               </label>
               <input
-                type="text"
                 value={form.last_name}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, last_name: e.target.value }))
-                }
-                className="w-full rounded-xl border px-3 py-2 text-sm"
+                onChange={(e) => setForm((p) => ({ ...p, last_name: e.target.value }))}
+                className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
               />
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-700">DOB *</label>
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-slate-700">
+              DOB *
+            </label>
             <input
               type="date"
               value={form.dob}
               onChange={(e) => setForm((p) => ({ ...p, dob: e.target.value }))}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
+              className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-700">
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-slate-700">
               Allergies
             </label>
             <input
-              type="text"
               value={form.allergies}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, allergies: e.target.value }))
-              }
-              className="w-full rounded-xl border px-3 py-2 text-sm"
+              onChange={(e) => setForm((p) => ({ ...p, allergies: e.target.value }))}
               placeholder="e.g. Nuts, dairy"
+              className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-700">
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-slate-700">
               Medical notes
             </label>
             <textarea
@@ -326,23 +344,23 @@ export default function CreateChildModal({
               onChange={(e) =>
                 setForm((p) => ({ ...p, medical_notes: e.target.value }))
               }
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              rows={3}
+              className="w-full min-h-[90px] rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-700">Notes</label>
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-slate-700">
+              Notes
+            </label>
             <textarea
               value={form.notes}
               onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              rows={3}
+              className="w-full min-h-[90px] rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
             />
           </div>
 
           <div className="rounded-2xl border p-3 space-y-3">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold text-slate-900">
                   Approved guardians
@@ -355,114 +373,115 @@ export default function CreateChildModal({
               <button
                 type="button"
                 onClick={() => setCreateGuardianOpen((v) => !v)}
-                className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                disabled={linking}
+                className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
                 {createGuardianOpen ? "Close" : "Create guardian"}
               </button>
             </div>
 
-            {selectedGuardians.length > 0 ? (
-              <div className="space-y-2">
-                {selectedGuardians.map((g) => (
+            {guardianError ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                {guardianError}
+              </div>
+            ) : null}
+
+            {createGuardianOpen ? (
+              <CreateGuardianInline
+                onCreated={handleGuardianCreatedInline}
+                disabled={linking}
+              />
+            ) : null}
+
+            {linkedGuardians.length === 0 ? (
+              <div className="rounded-xl border bg-slate-50 p-3">
+                <p className="text-sm text-slate-700">No guardians linked yet.</p>
+              </div>
+            ) : (
+              <div className="divide-y rounded-xl border">
+                {linkedGuardians.map((g) => (
                   <div
                     key={g.id}
-                    className="flex items-center justify-between rounded-xl border bg-slate-50 px-3 py-2"
+                    className="flex items-center justify-between gap-3 px-3 py-3"
                   >
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">
                         {g.full_name ?? "—"}
                       </p>
                       <p className="text-xs text-slate-600">
-                        {g.relationship ? g.relationship : "—"}
-                        {g.phone ? ` • ${g.phone}` : ""}
+                        {g.phone ? g.phone : "Phone —"}
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => removeGuardianFromSelection(g.id)}
-                      className="rounded-lg px-2 py-1 text-xs text-slate-700 hover:bg-slate-200"
+                      onClick={() => removeLinkedGuardian(g.id)}
+                      className="shrink-0 rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                     >
                       Remove
                     </button>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="rounded-xl border bg-slate-50 p-3">
-                <p className="text-sm text-slate-700">
-                  No guardians linked yet.
-                </p>
-              </div>
             )}
 
-            {createGuardianOpen ? (
-              <CreateGuardianInline
-                initialName={trimmedGuardianQuery}
-                onCreated={handleGuardianCreated}
-                disabled={saving}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-700">
+                Search guardians by name or phone
+              </label>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Name or phone…"
+                className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
               />
+            </div>
+
+            {searchError ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                {searchError}
+              </div>
             ) : null}
 
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={guardianQuery}
-                onChange={(e) => setGuardianQuery(e.target.value)}
-                placeholder="Search guardians by name or phone"
-                className="w-full rounded-xl border px-3 py-2 text-sm"
-              />
-
-              {guardianSearchError ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                  {guardianSearchError}
-                </div>
-              ) : null}
-
-              {trimmedGuardianQuery.length < 2 ? (
-                <p className="text-xs text-slate-500">
-                  Type at least 2 characters to search.
-                </p>
-              ) : guardianSearching ? (
-                <p className="text-xs text-slate-500">Searching…</p>
-              ) : guardianResults.length === 0 ? (
-                <p className="text-xs text-slate-500">
-                  No matches. Use “Create guardian”.
-                </p>
-              ) : (
-                <div className="divide-y rounded-xl border">
-                  {guardianResults.map((g) => {
-                    const already = selectedGuardians.some((x) => x.id === g.id);
-                    return (
-                      <button
-                        key={g.id}
-                        type="button"
-                        onClick={() => addGuardianToSelection(g)}
-                        disabled={already}
-                        className="w-full px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        <p className="text-sm font-medium text-slate-900">
-                          {g.full_name ?? "—"}
-                          {already ? " (linked)" : ""}
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          {g.relationship ? g.relationship : "—"}
-                          {g.phone ? ` • ${g.phone}` : ""}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            {searching ? (
+              <div className="rounded-xl border bg-slate-50 p-3">
+                <p className="text-sm text-slate-700">Searching…</p>
+              </div>
+            ) : trimmedSearch.length >= 2 && searchResults.length === 0 ? (
+              <div className="rounded-xl border bg-slate-50 p-3">
+                <p className="text-sm text-slate-700">No matches found.</p>
+              </div>
+            ) : searchResults.length === 0 ? null : (
+              <div className="divide-y rounded-xl border">
+                {searchResults.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => addExistingGuardian(g)}
+                    disabled={linking}
+                    className="w-full px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <p className="text-sm font-medium text-slate-900">
+                      {g.full_name ?? "—"}
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      {g.phone ? g.phone : "Phone —"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Tap to add as approved guardian
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="border-t px-4 py-3 space-y-2">
           <button
             type="button"
-            disabled={!canSave || saving}
             onClick={handleSave}
-            className="w-full rounded-xl bg-teal-950 px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+            disabled={!canSave || saving}
+            className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
           >
             {saving ? "Saving..." : "Save child"}
           </button>
@@ -470,8 +489,7 @@ export default function CreateChildModal({
           <button
             type="button"
             onClick={handleClose}
-            disabled={saving}
-            className="w-full rounded-xl bg-slate-200 px-4 py-3 text-sm font-medium text-slate-900 disabled:opacity-50"
+            className="w-full rounded-xl bg-slate-200 px-4 py-3 text-sm font-medium text-slate-900"
           >
             Cancel
           </button>
