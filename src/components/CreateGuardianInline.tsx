@@ -8,7 +8,6 @@ export type GuardianRow = {
   first_name: string | null;
   last_name: string | null;
   full_name: string | null;
-  relationship: string | null;
   phone: string | null;
   active: boolean | null;
 };
@@ -16,7 +15,7 @@ export type GuardianRow = {
 type NewGuardianState = {
   first_name: string;
   last_name: string;
-  relationship: string;
+  relationship_for_child: string;
   phone: string;
   approved_by_name: string;
   approved_by_method: "call" | "sms" | "in_person";
@@ -25,7 +24,7 @@ type NewGuardianState = {
 const initialGuardianState: NewGuardianState = {
   first_name: "",
   last_name: "",
-  relationship: "",
+  relationship_for_child: "",
   phone: "",
   approved_by_name: "",
   approved_by_method: "in_person",
@@ -42,17 +41,15 @@ function getErrorMessage(err: unknown): string {
 }
 
 function isDuplicateConstraint(err: unknown): boolean {
-  // Postgres unique violation code
   const e = err as { code?: string; message?: string; details?: string };
   if (e?.code === "23505") return true;
   const msg = `${e?.message ?? ""} ${e?.details ?? ""}`.toLowerCase();
-  // fallback (supabase sometimes includes "duplicate key value violates unique constraint")
   return msg.includes("duplicate") && msg.includes("unique");
 }
 
 type CreateGuardianInlineProps = {
-  initialName?: string; // best-effort prefill into first_name/last_name
-  onCreated: (guardian: GuardianRow) => void;
+  initialName?: string;
+  onCreated: (guardian: GuardianRow, relationshipForChild?: string) => void;
   disabled?: boolean;
 };
 
@@ -113,7 +110,6 @@ export default function CreateGuardianInline({
       const payload = {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim() || null,
-        relationship: form.relationship.trim() || null,
         phone: form.phone.trim() || null,
         approved_by_name: form.approved_by_name.trim() || null,
         approved_by_method: form.approved_by_method,
@@ -124,14 +120,23 @@ export default function CreateGuardianInline({
       const { data, error } = await supabase
         .from("guardians")
         .insert(payload)
-        .select("id,first_name,last_name,full_name,relationship,phone,active")
+        .select("id,first_name,last_name,full_name,phone,active")
         .single();
 
       if (error) throw error;
       if (!data) throw new Error("Guardian insert did not return data.");
 
-      onCreated(data as GuardianRow);
-      setForm(initialGuardianState);
+      const relationshipForChild =
+        form.relationship_for_child.trim().length > 0
+          ? form.relationship_for_child.trim()
+          : undefined;
+
+      onCreated(data as GuardianRow, relationshipForChild);
+      setForm({
+        ...initialGuardianState,
+        first_name: prefill.first,
+        last_name: prefill.last,
+      });
     } catch (err: unknown) {
       if (isDuplicateConstraint(err)) {
         setError(
@@ -176,9 +181,7 @@ export default function CreateGuardianInline({
           <input
             type="text"
             value={form.last_name}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, last_name: e.target.value }))
-            }
+            onChange={(e) => setForm((p) => ({ ...p, last_name: e.target.value }))}
             className="w-full rounded-xl border px-3 py-2 text-sm"
             disabled={disabled || saving}
           />
@@ -188,13 +191,13 @@ export default function CreateGuardianInline({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium text-slate-700">
-            Relationship
+            Relationship (for this child)
           </label>
           <input
             type="text"
-            value={form.relationship}
+            value={form.relationship_for_child}
             onChange={(e) =>
-              setForm((p) => ({ ...p, relationship: e.target.value }))
+              setForm((p) => ({ ...p, relationship_for_child: e.target.value }))
             }
             className="w-full rounded-xl border px-3 py-2 text-sm"
             placeholder="e.g. Mum, Dad"
