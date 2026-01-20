@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import CreateGuardianInline, {
   GuardianRow as GuardianInlineRow,
@@ -19,24 +19,7 @@ type GuardianRow = {
   full_name: string | null;
   phone: string | null;
   active: boolean | null;
-};
-
-type NewChildState = {
-  first_name: string;
-  last_name: string;
-  dob: string;
-  allergies: string;
-  medical_notes: string;
-  notes: string;
-};
-
-const initialChildState: NewChildState = {
-  first_name: "",
-  last_name: "",
-  dob: "",
-  allergies: "",
-  medical_notes: "",
-  notes: "",
+  relationship_for_child: string | null;
 };
 
 function getErrorMessage(err: unknown): string {
@@ -57,10 +40,15 @@ export default function CreateChildModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [form, setForm] = useState<NewChildState>(initialChildState);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [dob, setDob] = useState("");
+  const [allergies, setAllergies] = useState("");
+  const [medicalNotes, setMedicalNotes] = useState("");
+  const [notes, setNotes] = useState("");
 
   const [linkedGuardians, setLinkedGuardians] = useState<GuardianRow[]>([]);
-  const [linking, setLinking] = useState(false);
+  const [loadingGuardians, setLoadingGuardians] = useState(false);
   const [guardianError, setGuardianError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
@@ -73,26 +61,11 @@ export default function CreateChildModal({
 
   const canSave = useMemo(() => {
     return (
-      form.first_name.trim().length > 0 &&
-      form.last_name.trim().length > 0 &&
-      form.dob.trim().length > 0
+      firstName.trim().length > 0 &&
+      lastName.trim().length > 0 &&
+      dob.trim().length > 0
     );
-  }, [form.first_name, form.last_name, form.dob]);
-
-  const handleClose = useCallback(() => {
-    onClose();
-  }, [onClose]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") handleClose();
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, handleClose]);
+  }, [firstName, lastName, dob]);
 
   useEffect(() => {
     if (!open) return;
@@ -100,15 +73,21 @@ export default function CreateChildModal({
     setError(null);
     setGuardianError(null);
     setSearchError(null);
+
+    setFirstName("");
+    setLastName("");
+    setDob("");
+    setAllergies("");
+    setMedicalNotes("");
+    setNotes("");
+
+    setLinkedGuardians([]);
     setSearchResults([]);
     setSearch("");
     setCreateGuardianOpen(false);
-
-    setForm(initialChildState);
-    setLinkedGuardians([]);
   }, [open]);
 
-  async function runSearch() {
+  async function searchGuardians() {
     setSearchError(null);
     setSearchResults([]);
 
@@ -137,9 +116,16 @@ export default function CreateChildModal({
       if (error) throw error;
 
       const linkedIds = new Set(linkedGuardians.map((g) => g.id));
-      const list = ((data ?? []) as GuardianRow[]).filter((g) => !linkedIds.has(g.id));
+      const list = ((data ?? []) as Array<Omit<GuardianRow, "relationship_for_child">>).filter(
+        (g) => !linkedIds.has(g.id)
+      );
 
-      setSearchResults(list);
+      setSearchResults(
+        list.map((g) => ({
+          ...g,
+          relationship_for_child: null,
+        }))
+      );
     } catch (err: unknown) {
       setSearchError(getErrorMessage(err) ?? "Search failed.");
       setSearchResults([]);
@@ -149,55 +135,73 @@ export default function CreateChildModal({
   }
 
   useEffect(() => {
-    runSearch();
-  }, [trimmedSearch, linkedGuardians, open]);
+    let cancelled = false;
 
-  function addExistingGuardian(g: GuardianRow) {
+    async function run() {
+      if (cancelled) return;
+      await searchGuardians();
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [trimmedSearch, open, linkedGuardians]);
+
+  async function linkGuardian(
+    guardianId: string,
+    relationshipForChild?: string
+  ) {
     setGuardianError(null);
 
-    const seen = new Set(linkedGuardians.map((x) => x.id));
-    if (seen.has(g.id)) return;
+    if (!supabase) {
+      setGuardianError("Missing Supabase env vars.");
+      return;
+    }
 
-    setLinkedGuardians((prev) => [...prev, g]);
-    setSearch("");
-    setSearchResults([]);
+    setLoadingGuardians(true);
+    try {
+      const existing = linkedGuardians.find((g) => g.id === guardianId);
+      if (existing) return;
+
+      const { data: g, error: gErr } = await supabase
+        .from("guardians")
+        .select("id, first_name, last_name, full_name, phone, active")
+        .eq("id", guardianId)
+        .single();
+
+      if (gErr) throw gErr;
+
+      setLinkedGuardians((prev) => [
+        ...prev,
+        {
+          ...(g as Omit<GuardianRow, "relationship_for_child">),
+          relationship_for_child:
+            relationshipForChild && relationshipForChild.trim().length > 0
+              ? relationshipForChild.trim()
+              : null,
+        },
+      ]);
+
+      setSearch("");
+      setSearchResults([]);
+    } catch (err: unknown) {
+      setGuardianError(getErrorMessage(err) ?? "Failed to link guardian.");
+    } finally {
+      setLoadingGuardians(false);
+    }
   }
 
-  function removeLinkedGuardian(id: string) {
-    setGuardianError(null);
-    setLinkedGuardians((prev) => prev.filter((g) => g.id !== id));
+  async function unlinkGuardian(guardianId: string) {
+    setLinkedGuardians((prev) => prev.filter((g) => g.id !== guardianId));
   }
 
   async function handleGuardianCreatedInline(
     g: GuardianInlineRow,
-    _relationshipForChild?: string
+    relationshipForChild?: string
   ) {
-    setGuardianError(null);
-    setLinking(true);
-    try {
-      const asGuardian: GuardianRow = {
-        id: g.id,
-        first_name: g.first_name ?? null,
-        last_name: g.last_name ?? null,
-        full_name: g.full_name ?? null,
-        phone: g.phone ?? null,
-        active: g.active ?? null,
-      };
-
-      setLinkedGuardians((prev) => {
-        const seen = new Set(prev.map((x) => x.id));
-        if (seen.has(asGuardian.id)) return prev;
-        return [...prev, asGuardian];
-      });
-
-      setCreateGuardianOpen(false);
-      setSearch("");
-      setSearchResults([]);
-    } catch (err: unknown) {
-      setGuardianError(getErrorMessage(err) ?? "Failed to add new guardian.");
-    } finally {
-      setLinking(false);
-    }
+    await linkGuardian(g.id, relationshipForChild);
+    setCreateGuardianOpen(false);
   }
 
   async function handleSave() {
@@ -216,20 +220,19 @@ export default function CreateChildModal({
 
     setSaving(true);
     try {
-      const childPayload = {
-        first_name: form.first_name.trim(),
-        last_name: form.last_name.trim(),
-        dob: form.dob.trim(),
-        allergies: form.allergies.trim().length > 0 ? form.allergies.trim() : null,
-        medical_notes:
-          form.medical_notes.trim().length > 0 ? form.medical_notes.trim() : null,
-        notes: form.notes.trim().length > 0 ? form.notes.trim() : null,
+      const payload = {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        dob: dob.trim(),
+        allergies: allergies.trim().length > 0 ? allergies.trim() : null,
+        medical_notes: medicalNotes.trim().length > 0 ? medicalNotes.trim() : null,
+        notes: notes.trim().length > 0 ? notes.trim() : null,
         active: true,
       };
 
       const { data: child, error: childErr } = await supabase
         .from("children")
-        .insert(childPayload)
+        .insert(payload)
         .select("id")
         .single();
 
@@ -237,20 +240,24 @@ export default function CreateChildModal({
       if (!child?.id) throw new Error("Child insert did not return id.");
 
       if (linkedGuardians.length > 0) {
-        const linksPayload = linkedGuardians.map((g) => ({
-          child_id: child.id as string,
+        const linkRows = linkedGuardians.map((g) => ({
+          child_id: child.id,
           guardian_id: g.id,
           active: true,
+          relationship: g.relationship_for_child,
         }));
 
-        const { error: linkErr } = await supabase.from("child_guardians").insert(linksPayload);
+        const { error: linkErr } = await supabase
+          .from("child_guardians")
+          .insert(linkRows);
+
         if (linkErr) throw linkErr;
       }
 
       onCreated?.();
-      handleClose();
+      onClose();
     } catch (err: unknown) {
-      setError(getErrorMessage(err) ?? "Failed to save child.");
+      setError(getErrorMessage(err) ?? "Failed to create child.");
     } finally {
       setSaving(false);
     }
@@ -273,7 +280,7 @@ export default function CreateChildModal({
 
           <button
             type="button"
-            onClick={handleClose}
+            onClick={onClose}
             className="rounded-lg px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
           >
             Close
@@ -293,8 +300,8 @@ export default function CreateChildModal({
                 First name *
               </label>
               <input
-                value={form.first_name}
-                onChange={(e) => setForm((p) => ({ ...p, first_name: e.target.value }))}
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
                 className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
               />
             </div>
@@ -304,8 +311,8 @@ export default function CreateChildModal({
                 Last name *
               </label>
               <input
-                value={form.last_name}
-                onChange={(e) => setForm((p) => ({ ...p, last_name: e.target.value }))}
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
                 className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
               />
             </div>
@@ -317,8 +324,8 @@ export default function CreateChildModal({
             </label>
             <input
               type="date"
-              value={form.dob}
-              onChange={(e) => setForm((p) => ({ ...p, dob: e.target.value }))}
+              value={dob ?? ""}
+              onChange={(e) => setDob(e.target.value)}
               className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
             />
           </div>
@@ -328,8 +335,8 @@ export default function CreateChildModal({
               Allergies
             </label>
             <input
-              value={form.allergies}
-              onChange={(e) => setForm((p) => ({ ...p, allergies: e.target.value }))}
+              value={allergies}
+              onChange={(e) => setAllergies(e.target.value)}
               placeholder="e.g. Nuts, dairy"
               className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
             />
@@ -340,10 +347,8 @@ export default function CreateChildModal({
               Medical notes
             </label>
             <textarea
-              value={form.medical_notes}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, medical_notes: e.target.value }))
-              }
+              value={medicalNotes}
+              onChange={(e) => setMedicalNotes(e.target.value)}
               className="w-full min-h-[90px] rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
             />
           </div>
@@ -353,8 +358,8 @@ export default function CreateChildModal({
               Notes
             </label>
             <textarea
-              value={form.notes}
-              onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
               className="w-full min-h-[90px] rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
             />
           </div>
@@ -373,7 +378,7 @@ export default function CreateChildModal({
               <button
                 type="button"
                 onClick={() => setCreateGuardianOpen((v) => !v)}
-                disabled={linking}
+                disabled={saving || loadingGuardians}
                 className="rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
                 {createGuardianOpen ? "Close" : "Create guardian"}
@@ -389,11 +394,15 @@ export default function CreateChildModal({
             {createGuardianOpen ? (
               <CreateGuardianInline
                 onCreated={handleGuardianCreatedInline}
-                disabled={linking}
+                disabled={saving || loadingGuardians}
               />
             ) : null}
 
-            {linkedGuardians.length === 0 ? (
+            {loadingGuardians ? (
+              <div className="rounded-xl border bg-slate-50 p-3">
+                <p className="text-sm text-slate-700">Working…</p>
+              </div>
+            ) : linkedGuardians.length === 0 ? (
               <div className="rounded-xl border bg-slate-50 p-3">
                 <p className="text-sm text-slate-700">No guardians linked yet.</p>
               </div>
@@ -410,11 +419,14 @@ export default function CreateChildModal({
                       </p>
                       <p className="text-xs text-slate-600">
                         {g.phone ? g.phone : "Phone —"}
+                        {g.relationship_for_child
+                          ? ` • ${g.relationship_for_child}`
+                          : ""}
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => removeLinkedGuardian(g.id)}
+                      onClick={() => unlinkGuardian(g.id)}
                       className="shrink-0 rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                     >
                       Remove
@@ -456,9 +468,8 @@ export default function CreateChildModal({
                   <button
                     key={g.id}
                     type="button"
-                    onClick={() => addExistingGuardian(g)}
-                    disabled={linking}
-                    className="w-full px-3 py-3 text-left hover:bg-slate-50 disabled:opacity-50"
+                    onClick={() => linkGuardian(g.id)}
+                    className="w-full px-3 py-3 text-left hover:bg-slate-50"
                   >
                     <p className="text-sm font-medium text-slate-900">
                       {g.full_name ?? "—"}
@@ -481,14 +492,14 @@ export default function CreateChildModal({
             type="button"
             onClick={handleSave}
             disabled={!canSave || saving}
-            className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+            className="w-full rounded-xl bg-teal-950 px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
           >
-            {saving ? "Saving..." : "Save child"}
+            {saving ? "Saving…" : "Save child"}
           </button>
 
           <button
             type="button"
-            onClick={handleClose}
+            onClick={onClose}
             className="w-full rounded-xl bg-slate-200 px-4 py-3 text-sm font-medium text-slate-900"
           >
             Cancel
