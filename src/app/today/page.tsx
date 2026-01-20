@@ -37,6 +37,7 @@ type CheckedInRow = {
   group_key: GroupKey;
   check_in_time: string;
   check_out_time: string | null;
+  checked_out_by_guardian_id?: string | null;
   children: {
     id: string;
     first_name: string;
@@ -266,6 +267,7 @@ export default function TodayPage() {
           group_key,
           check_in_time,
           check_out_time,
+          checked_out_by_guardian_id,
           child:children (
             id,
             first_name,
@@ -284,6 +286,7 @@ export default function TodayPage() {
         group_key: GroupKey;
         check_in_time: string;
         check_out_time: string | null;
+        checked_out_by_guardian_id?: string | null;
         child: JoinedChildObject | JoinedChildObject[] | null;
       }>;
 
@@ -294,6 +297,7 @@ export default function TodayPage() {
           group_key: r.group_key,
           check_in_time: r.check_in_time,
           check_out_time: r.check_out_time,
+          checked_out_by_guardian_id: r.checked_out_by_guardian_id ?? null,
           children: normalizeJoinedChild(r.child),
         }))
       );
@@ -475,6 +479,18 @@ export default function TodayPage() {
 
     setCheckingIn(true);
     try {
+      // Prevent double check-in for the same child on the same service date
+      const existing = checkedIn.find((r) => r.child_id === selectedChild.id);
+      if (existing) {
+        const alreadyOut = !!existing.check_out_time;
+        setCheckInError(
+          alreadyOut
+            ? "This child already has an attendance record for this Sunday (already checked out)."
+            : "This child is already checked in for this Sunday."
+        );
+        return;
+      }
+
       const age = ageOnJune30ThisYear(selectedChild.dob);
       const group_key = groupKeyForAgeOnJune30(age);
 
