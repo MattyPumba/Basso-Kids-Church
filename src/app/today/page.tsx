@@ -24,9 +24,9 @@ type GuardianRow = {
   first_name: string | null;
   last_name: string | null;
   full_name: string | null;
-  relationship: string | null;
   phone: string | null;
   active: boolean | null;
+  relationship_for_child: string | null;
 };
 
 type GroupKey = "KINDY_PREPRIMARY" | "YEARS_1_3" | "YEARS_4_6";
@@ -110,6 +110,12 @@ function formatSundayLabel(d: Date): string {
     month: "2-digit",
     year: "numeric",
   });
+}
+
+function titleCaseRelationship(s: string): string {
+  const t = s.trim();
+  if (!t) return "";
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 // WA bucket logic: age as at 30 June of current year
@@ -391,14 +397,19 @@ export default function TodayPage() {
     try {
       const { data: links, error: linkErr } = await supabase
         .from("child_guardians")
-        .select("guardian_id")
+        .select("guardian_id, relationship")
         .eq("child_id", childId)
         .eq("active", true);
 
       if (linkErr) throw linkErr;
 
-      const ids = (links ?? [])
-        .map((r) => (r as { guardian_id: string | null }).guardian_id)
+      const typedLinks = (links ?? []) as Array<{
+        guardian_id: string | null;
+        relationship: string | null;
+      }>;
+
+      const ids = typedLinks
+        .map((r) => r.guardian_id)
         .filter((id): id is string => !!id);
 
       if (ids.length === 0) {
@@ -406,21 +417,33 @@ export default function TodayPage() {
         return;
       }
 
+      const relById = new Map<string, string | null>();
+      for (const l of typedLinks) {
+        if (!l.guardian_id) continue;
+        if (relById.has(l.guardian_id)) continue;
+        relById.set(l.guardian_id, l.relationship ?? null);
+      }
+
       const { data: gs, error: gErr } = await supabase
         .from("guardians")
-        .select("id, first_name, last_name, full_name, relationship, phone, active")
+        .select("id, first_name, last_name, full_name, phone, active")
         .in("id", ids);
 
       if (gErr) throw gErr;
 
-      const list = ((gs ?? []) as GuardianRow[]).filter((g) => g.active !== false);
+      const list = ((gs ?? []) as Array<Omit<GuardianRow, "relationship_for_child">>).filter(
+        (g) => g.active !== false
+      );
 
       const seen = new Set<string>();
       const deduped: GuardianRow[] = [];
       for (const g of list) {
         if (seen.has(g.id)) continue;
         seen.add(g.id);
-        deduped.push(g);
+        deduped.push({
+          ...g,
+          relationship_for_child: relById.get(g.id) ?? null,
+        });
       }
 
       setGuardians(deduped);
@@ -440,25 +463,59 @@ export default function TodayPage() {
     await loadGuardiansForChild(child.id);
   }
 
-  async function linkGuardianToChild(childId: string, guardianId: string) {
+  async function linkGuardianToChild(
+    childId: string,
+    guardianId: string,
+    relationshipForChild?: string
+  ) {
     if (!supabase) throw new Error("Missing Supabase env vars.");
+
+    const { data: existing, error: existingErr } = await supabase
+      .from("child_guardians")
+      .select("child_id, guardian_id")
+      .eq("child_id", childId)
+      .eq("guardian_id", guardianId)
+      .maybeSingle();
+
+    if (existingErr) throw existingErr;
+
+    if (existing) {
+      const { error } = await supabase
+        .from("child_guardians")
+        .update({
+          active: true,
+          relationship:
+            relationshipForChild && relationshipForChild.trim().length > 0
+              ? relationshipForChild.trim()
+              : null,
+        })
+        .eq("child_id", childId)
+        .eq("guardian_id", guardianId);
+
+      if (error) throw error;
+      return;
+    }
 
     const { error } = await supabase.from("child_guardians").insert({
       child_id: childId,
       guardian_id: guardianId,
       active: true,
+      relationship:
+        relationshipForChild && relationshipForChild.trim().length > 0
+          ? relationshipForChild.trim()
+          : null,
     });
 
     if (error) throw error;
   }
 
-  async function handleGuardianCreated(g: GuardianInlineRow) {
+  async function handleGuardianCreated(g: GuardianInlineRow, relationshipForChild?: string) {
     if (!selectedChild) return;
 
     setGuardianError(null);
     setLinkingGuardian(true);
     try {
-      await linkGuardianToChild(selectedChild.id, g.id);
+      await linkGuardianToChild(selectedChild.id, g.id, relationshipForChild);
       setCreateGuardianOpen(false);
       await loadGuardiansForChild(selectedChild.id);
     } catch (err: unknown) {
@@ -534,14 +591,19 @@ export default function TodayPage() {
     try {
       const { data: links, error: linkErr } = await supabase
         .from("child_guardians")
-        .select("guardian_id")
+        .select("guardian_id, relationship")
         .eq("child_id", childId)
         .eq("active", true);
 
       if (linkErr) throw linkErr;
 
-      const ids = (links ?? [])
-        .map((r) => (r as { guardian_id: string | null }).guardian_id)
+      const typedLinks = (links ?? []) as Array<{
+        guardian_id: string | null;
+        relationship: string | null;
+      }>;
+
+      const ids = typedLinks
+        .map((r) => r.guardian_id)
         .filter((id): id is string => !!id);
 
       if (ids.length === 0) {
@@ -549,21 +611,33 @@ export default function TodayPage() {
         return;
       }
 
+      const relById = new Map<string, string | null>();
+      for (const l of typedLinks) {
+        if (!l.guardian_id) continue;
+        if (relById.has(l.guardian_id)) continue;
+        relById.set(l.guardian_id, l.relationship ?? null);
+      }
+
       const { data: gs, error: gErr } = await supabase
         .from("guardians")
-        .select("id, first_name, last_name, full_name, relationship, phone, active")
+        .select("id, first_name, last_name, full_name, phone, active")
         .in("id", ids);
 
       if (gErr) throw gErr;
 
-      const list = ((gs ?? []) as GuardianRow[]).filter((g) => g.active !== false);
+      const list = ((gs ?? []) as Array<Omit<GuardianRow, "relationship_for_child">>).filter(
+        (g) => g.active !== false
+      );
 
       const seen = new Set<string>();
       const deduped: GuardianRow[] = [];
       for (const g of list) {
         if (seen.has(g.id)) continue;
         seen.add(g.id);
-        deduped.push(g);
+        deduped.push({
+          ...g,
+          relationship_for_child: relById.get(g.id) ?? null,
+        });
       }
 
       setCheckOutGuardians(deduped);
@@ -583,13 +657,13 @@ export default function TodayPage() {
     await loadCheckoutGuardiansForChild(row.child_id);
   }
 
-  async function handlePickupGuardianCreated(g: GuardianInlineRow) {
+  async function handlePickupGuardianCreated(g: GuardianInlineRow, relationshipForChild?: string) {
     if (!checkOutTarget) return;
 
     setCheckOutError(null);
     setLinkingGuardian(true);
     try {
-      await linkGuardianToChild(checkOutTarget.child_id, g.id);
+      await linkGuardianToChild(checkOutTarget.child_id, g.id, relationshipForChild);
       setCreatePickupOpen(false);
       await loadCheckoutGuardiansForChild(checkOutTarget.child_id);
     } catch (err: unknown) {
@@ -958,7 +1032,9 @@ export default function TodayPage() {
                         {g.full_name ?? "—"}
                       </p>
                       <p className="text-xs text-slate-600">
-                        {g.relationship ? g.relationship : "—"}
+                        {g.relationship_for_child
+                          ? titleCaseRelationship(g.relationship_for_child)
+                          : "—"}
                         {g.phone ? ` • ${g.phone}` : ""}
                       </p>
                     </button>
@@ -1054,7 +1130,9 @@ export default function TodayPage() {
                   {g.full_name ?? "—"}
                 </p>
                 <p className="text-xs text-slate-600">
-                  {g.relationship ? g.relationship : "—"}
+                  {g.relationship_for_child
+                    ? titleCaseRelationship(g.relationship_for_child)
+                    : "—"}
                   {g.phone ? ` • ${g.phone}` : ""}
                 </p>
               </button>
