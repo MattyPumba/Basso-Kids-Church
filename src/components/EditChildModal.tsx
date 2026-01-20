@@ -18,9 +18,15 @@ type GuardianRow = {
   first_name: string | null;
   last_name: string | null;
   full_name: string | null;
-  relationship: string | null;
   phone: string | null;
   active: boolean | null;
+};
+
+type LinkedGuardianRow = {
+  guardian_id: string;
+  relationship: string | null;
+  active: boolean | null;
+  guardian: GuardianRow[] | GuardianRow | null;
 };
 
 function getErrorMessage(err: unknown): string {
@@ -31,6 +37,14 @@ function getErrorMessage(err: unknown): string {
   } catch {
     return "Unknown error";
   }
+}
+
+function normalizeGuardianJoin(
+  g: GuardianRow[] | GuardianRow | null | undefined
+): GuardianRow | null {
+  if (!g) return null;
+  if (Array.isArray(g)) return g.length > 0 ? g[0] : null;
+  return g;
 }
 
 export default function EditChildModal({
@@ -51,7 +65,7 @@ export default function EditChildModal({
   const [medicalNotes, setMedicalNotes] = useState("");
   const [notes, setNotes] = useState("");
 
-  const [linkedGuardians, setLinkedGuardians] = useState<GuardianRow[]>([]);
+  const [linkedGuardians, setLinkedGuardians] = useState<LinkedGuardianRow[]>([]);
   const [loadingGuardians, setLoadingGuardians] = useState(false);
   const [guardianError, setGuardianError] = useState<string | null>(null);
 
@@ -64,7 +78,11 @@ export default function EditChildModal({
   const [createGuardianOpen, setCreateGuardianOpen] = useState(false);
 
   const canSave = useMemo(() => {
-    return firstName.trim().length > 0 && lastName.trim().length > 0 && dob.trim().length > 0;
+    return (
+      firstName.trim().length > 0 &&
+      lastName.trim().length > 0 &&
+      dob.trim().length > 0
+    );
   }, [firstName, lastName, dob]);
 
   const handleClose = useCallback(() => {
@@ -93,38 +111,37 @@ export default function EditChildModal({
 
     setLoadingGuardians(true);
     try {
-      const { data: links, error: linkErr } = await supabase
+      const { data, error } = await supabase
         .from("child_guardians")
-        .select("guardian_id, active")
+        .select(
+          `
+          guardian_id,
+          relationship,
+          active,
+          guardian:guardians (
+            id,
+            first_name,
+            last_name,
+            full_name,
+            phone,
+            active
+          )
+        `
+        )
         .eq("child_id", forChildId);
 
-      if (linkErr) throw linkErr;
+      if (error) throw error;
 
-      const activeIds = (links ?? [])
-        .filter((r) => (r as { active: boolean | null }).active !== false)
-        .map((r) => (r as { guardian_id: string | null }).guardian_id)
-        .filter((id): id is string => !!id);
+      const rows = (data ?? []) as LinkedGuardianRow[];
 
-      if (activeIds.length === 0) {
-        setLinkedGuardians([]);
-        return;
-      }
+      const activeRows = rows.filter((r) => r.active !== false);
 
-      const { data: gs, error: gErr } = await supabase
-        .from("guardians")
-        .select("id, first_name, last_name, full_name, relationship, phone, active")
-        .in("id", activeIds);
-
-      if (gErr) throw gErr;
-
-      const list = ((gs ?? []) as GuardianRow[]).filter((g) => g.active !== false);
-
+      const deduped: LinkedGuardianRow[] = [];
       const seen = new Set<string>();
-      const deduped: GuardianRow[] = [];
-      for (const g of list) {
-        if (seen.has(g.id)) continue;
-        seen.add(g.id);
-        deduped.push(g);
+      for (const r of activeRows) {
+        if (seen.has(r.guardian_id)) continue;
+        seen.add(r.guardian_id);
+        deduped.push(r);
       }
 
       setLinkedGuardians(deduped);
@@ -211,7 +228,7 @@ export default function EditChildModal({
 
         const { data, error } = await supabase
           .from("guardians")
-          .select("id, first_name, last_name, full_name, relationship, phone, active")
+          .select("id, first_name, last_name, full_name, phone, active")
           .eq("active", true)
           .or(`full_name.ilike.${pattern},phone.ilike.${pattern}`)
           .order("full_name", { ascending: true })
@@ -220,7 +237,7 @@ export default function EditChildModal({
         if (error) throw error;
         if (cancelled) return;
 
-        const linkedIds = new Set(linkedGuardians.map((g) => g.id));
+        const linkedIds = new Set(linkedGuardians.map((g) => g.guardian_id));
         const list = ((data ?? []) as GuardianRow[]).filter((g) => !linkedIds.has(g.id));
 
         setSearchResults(list);
@@ -305,6 +322,33 @@ export default function EditChildModal({
       await loadLinkedGuardians(childId);
     } catch (err: unknown) {
       setGuardianError(getErrorMessage(err) ?? "Failed to unlink guardian.");
+    } finally {
+      setLinking(false);
+    }
+  }
+
+  async function updateRelationship(guardianId: string, relationship: string) {
+    if (!childId) return;
+
+    setGuardianError(null);
+    setLinking(true);
+
+    try {
+      if (!supabase) throw new Error("Missing Supabase env vars.");
+
+      const { error } = await supabase
+        .from("child_guardians")
+        .update({
+          relationship: relationship.trim().length > 0 ? relationship.trim() : null,
+        })
+        .eq("child_id", childId)
+        .eq("guardian_id", guardianId);
+
+      if (error) throw error;
+
+      await loadLinkedGuardians(childId);
+    } catch (err: unknown) {
+      setGuardianError(getErrorMessage(err) ?? "Failed to update relationship.");
     } finally {
       setLinking(false);
     }
@@ -535,30 +579,50 @@ export default function EditChildModal({
                   </div>
                 ) : (
                   <div className="divide-y rounded-xl border">
-                    {linkedGuardians.map((g) => (
-                      <div
-                        key={g.id}
-                        className="flex items-center justify-between gap-3 px-3 py-3"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-slate-900">
-                            {g.full_name ?? "—"}
-                          </p>
-                          <p className="text-xs text-slate-600">
-                            {g.phone ? g.phone : "Phone —"}
-                            {g.relationship ? ` • ${g.relationship}` : ""}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => unlinkGuardian(g.id)}
-                          disabled={linking}
-                          className="shrink-0 rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    {linkedGuardians.map((row) => {
+                      const g = normalizeGuardianJoin(row.guardian);
+
+                      if (!g) return null;
+
+                      return (
+                        <div
+                          key={row.guardian_id}
+                          className="flex items-center justify-between gap-3 px-3 py-3"
                         >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-slate-900">
+                              {g.full_name ?? "—"}
+                            </p>
+                            <p className="text-xs text-slate-600">
+                              {g.phone ? g.phone : "Phone —"}
+                            </p>
+                            <div className="mt-2">
+                              <label className="block text-[11px] font-semibold text-slate-700">
+                                Relationship (for this child)
+                              </label>
+                              <input
+                                value={row.relationship ?? ""}
+                                onChange={(e) =>
+                                  updateRelationship(row.guardian_id, e.target.value)
+                                }
+                                disabled={linking}
+                                placeholder="Mum, Dad, Nan, Friend…"
+                                className="mt-1 w-full rounded-lg border px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-teal-900/20 disabled:opacity-50"
+                              />
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => unlinkGuardian(row.guardian_id)}
+                            disabled={linking}
+                            className="shrink-0 rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -603,7 +667,6 @@ export default function EditChildModal({
                         </p>
                         <p className="text-xs text-slate-600">
                           {g.phone ? g.phone : "Phone —"}
-                          {g.relationship ? ` • ${g.relationship}` : ""}
                         </p>
                         <p className="mt-1 text-[11px] text-slate-500">
                           Tap to add as approved guardian
