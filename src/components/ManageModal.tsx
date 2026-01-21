@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import EditChildModal from "@/components/EditChildModal";
 import EditGuardianModal from "@/components/EditGuardianModal";
+import CreateChildModal from "@/components/CreateChildModal";
 
 type ManageModalProps = {
   open: boolean;
@@ -61,6 +62,8 @@ export default function ManageModal({ open, onClose }: ManageModalProps) {
   const [editGuardianOpen, setEditGuardianOpen] = useState(false);
   const [editGuardianId, setEditGuardianId] = useState<string | null>(null);
 
+  const [createChildOpen, setCreateChildOpen] = useState(false);
+
   useEffect(() => {
     if (!open) return;
 
@@ -79,6 +82,8 @@ export default function ManageModal({ open, onClose }: ManageModalProps) {
 
     setEditGuardianOpen(false);
     setEditGuardianId(null);
+
+    setCreateChildOpen(false);
   }, [open]);
 
   useEffect(() => {
@@ -205,7 +210,7 @@ export default function ManageModal({ open, onClose }: ManageModalProps) {
           </button>
         </div>
 
-        <div className="px-4 py-3">
+        <div className="px-4 py-3 space-y-3">
           <div className="flex gap-2">
             <button
               type="button"
@@ -230,6 +235,18 @@ export default function ManageModal({ open, onClose }: ManageModalProps) {
               Guardians
             </button>
           </div>
+
+          {tab === "children" ? (
+            <div className="flex items-center justify-start">
+              <button
+                type="button"
+                onClick={() => setCreateChildOpen(true)}
+                className="rounded-xl bg-teal-950 px-3 py-2 text-xs font-medium text-white"
+              >
+                + New Child
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div className="max-h-[70vh] overflow-y-auto px-4 pb-4 space-y-3">
@@ -329,9 +346,7 @@ export default function ManageModal({ open, onClose }: ManageModalProps) {
                       <p className="text-xs text-slate-600">
                         {g.phone ? g.phone : "Phone —"}
                       </p>
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        Tap to edit
-                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">Tap to edit</p>
                     </button>
                   ))}
                 </div>
@@ -374,6 +389,14 @@ export default function ManageModal({ open, onClose }: ManageModalProps) {
         onUpdated={() => {
           setEditGuardianOpen(false);
           setEditGuardianId(null);
+        }}
+      />
+
+      <CreateChildModal
+        open={createChildOpen}
+        onClose={() => setCreateChildOpen(false)}
+        onCreated={() => {
+          setCreateChildOpen(false);
         }}
       />
     </div>
