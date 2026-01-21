@@ -32,6 +32,12 @@ function getErrorMessage(err: unknown): string {
   }
 }
 
+function titleCaseRelationship(s: string): string {
+  const t = s.trim();
+  if (!t) return "";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 export default function CreateChildModal({
   open,
   onClose,
@@ -59,6 +65,12 @@ export default function CreateChildModal({
 
   const [createGuardianOpen, setCreateGuardianOpen] = useState(false);
 
+  // New: relationship prompt for selecting an existing guardian from search results
+  const [pendingLinkGuardianId, setPendingLinkGuardianId] = useState<string | null>(
+    null
+  );
+  const [pendingRelationship, setPendingRelationship] = useState("");
+
   const canSave = useMemo(() => {
     return (
       firstName.trim().length > 0 &&
@@ -85,6 +97,9 @@ export default function CreateChildModal({
     setSearchResults([]);
     setSearch("");
     setCreateGuardianOpen(false);
+
+    setPendingLinkGuardianId(null);
+    setPendingRelationship("");
   }, [open]);
 
   async function searchGuardians() {
@@ -116,9 +131,9 @@ export default function CreateChildModal({
       if (error) throw error;
 
       const linkedIds = new Set(linkedGuardians.map((g) => g.id));
-      const list = ((data ?? []) as Array<Omit<GuardianRow, "relationship_for_child">>).filter(
-        (g) => !linkedIds.has(g.id)
-      );
+      const list = (
+        (data ?? []) as Array<Omit<GuardianRow, "relationship_for_child">>
+      ).filter((g) => !linkedIds.has(g.id));
 
       setSearchResults(
         list.map((g) => ({
@@ -148,10 +163,7 @@ export default function CreateChildModal({
     };
   }, [trimmedSearch, open, linkedGuardians]);
 
-  async function linkGuardian(
-    guardianId: string,
-    relationshipForChild?: string
-  ) {
+  async function linkGuardian(guardianId: string, relationshipForChild?: string) {
     setGuardianError(null);
 
     if (!supabase) {
@@ -185,6 +197,8 @@ export default function CreateChildModal({
 
       setSearch("");
       setSearchResults([]);
+      setPendingLinkGuardianId(null);
+      setPendingRelationship("");
     } catch (err: unknown) {
       setGuardianError(getErrorMessage(err) ?? "Failed to link guardian.");
     } finally {
@@ -194,6 +208,10 @@ export default function CreateChildModal({
 
   async function unlinkGuardian(guardianId: string) {
     setLinkedGuardians((prev) => prev.filter((g) => g.id !== guardianId));
+    if (pendingLinkGuardianId === guardianId) {
+      setPendingLinkGuardianId(null);
+      setPendingRelationship("");
+    }
   }
 
   async function handleGuardianCreatedInline(
@@ -202,6 +220,17 @@ export default function CreateChildModal({
   ) {
     await linkGuardian(g.id, relationshipForChild);
     setCreateGuardianOpen(false);
+  }
+
+  function beginLinkExistingGuardian(guardianId: string) {
+    setGuardianError(null);
+    setPendingLinkGuardianId(guardianId);
+    setPendingRelationship("");
+  }
+
+  async function confirmLinkExistingGuardian() {
+    if (!pendingLinkGuardianId) return;
+    await linkGuardian(pendingLinkGuardianId, pendingRelationship);
   }
 
   async function handleSave() {
@@ -264,6 +293,11 @@ export default function CreateChildModal({
   }
 
   if (!open) return null;
+
+  const pendingGuardian =
+    pendingLinkGuardianId && searchResults.length > 0
+      ? searchResults.find((g) => g.id === pendingLinkGuardianId) ?? null
+      : null;
 
   return (
     <div
@@ -420,7 +454,7 @@ export default function CreateChildModal({
                       <p className="text-xs text-slate-600">
                         {g.phone ? g.phone : "Phone —"}
                         {g.relationship_for_child
-                          ? ` • ${g.relationship_for_child}`
+                          ? ` • ${titleCaseRelationship(g.relationship_for_child)}`
                           : ""}
                       </p>
                     </div>
@@ -442,7 +476,11 @@ export default function CreateChildModal({
               </label>
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPendingLinkGuardianId(null);
+                  setPendingRelationship("");
+                }}
                 placeholder="Name or phone…"
                 className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
               />
@@ -465,25 +503,73 @@ export default function CreateChildModal({
             ) : searchResults.length === 0 ? null : (
               <div className="divide-y rounded-xl border">
                 {searchResults.map((g) => (
-                  <button
-                    key={g.id}
-                    type="button"
-                    onClick={() => linkGuardian(g.id)}
-                    className="w-full px-3 py-3 text-left hover:bg-slate-50"
-                  >
-                    <p className="text-sm font-medium text-slate-900">
-                      {g.full_name ?? "—"}
-                    </p>
-                    <p className="text-xs text-slate-600">
-                      {g.phone ? g.phone : "Phone —"}
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      Tap to add as approved guardian
-                    </p>
-                  </button>
+                  <div key={g.id} className="px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">
+                          {g.full_name ?? "—"}
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          {g.phone ? g.phone : "Phone —"}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Add as approved guardian (set relationship)
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => beginLinkExistingGuardian(g.id)}
+                        disabled={saving || loadingGuardians}
+                        className="shrink-0 rounded-lg border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Add
+                      </button>
+                    </div>
+
+                    {pendingLinkGuardianId === g.id ? (
+                      <div className="mt-3 space-y-2 rounded-xl border bg-slate-50 p-3">
+                        <div className="space-y-2">
+                          <label className="block text-xs font-semibold text-slate-700">
+                            Relationship (optional)
+                          </label>
+                          <input
+                            value={pendingRelationship}
+                            onChange={(e) => setPendingRelationship(e.target.value)}
+                            placeholder="e.g. Mum, Dad, Grandma"
+                            className="w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-900/20"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={confirmLinkExistingGuardian}
+                            disabled={saving || loadingGuardians}
+                            className="flex-1 rounded-xl bg-teal-950 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingLinkGuardianId(null);
+                              setPendingRelationship("");
+                            }}
+                            disabled={saving || loadingGuardians}
+                            className="flex-1 rounded-xl bg-slate-200 px-3 py-2 text-xs font-medium text-slate-900 disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             )}
+
+            {pendingGuardian ? null : null}
           </div>
         </div>
 
