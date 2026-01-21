@@ -9,6 +9,8 @@ import CreateGuardianInline, {
   GuardianRow as GuardianInlineRow,
 } from "@/components/CreateGuardianInline";
 import ManageModal from "@/components/ManageModal";
+import BirthdaysModal from "@/components/BirthdaysModal";
+import AllergiesModal from "@/components/AllergiesModal";
 
 type ChildRow = {
   id: string;
@@ -41,6 +43,8 @@ type CheckedInRow = {
     id: string;
     first_name: string;
     last_name: string;
+    dob: string | null;
+    allergies: string | null;
   }[] | null;
 };
 
@@ -64,6 +68,8 @@ type JoinedChildObject = {
   id: string;
   first_name: string;
   last_name: string;
+  dob: string | null;
+  allergies: string | null;
 };
 
 function normalizeJoinedChild(
@@ -140,6 +146,17 @@ function groupKeyForAgeOnJune30(ageYears: number | null): GroupKey {
   return "YEARS_4_6";
 }
 
+function sameMonthDay(a: Date, b: Date): boolean {
+  return a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function parseAllergens(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export default function TodayPage() {
   const router = useRouter();
 
@@ -190,6 +207,10 @@ export default function TodayPage() {
 
   // Manage
   const [manageOpen, setManageOpen] = useState(false);
+
+  // Quick panels -> modals
+  const [birthdaysOpen, setBirthdaysOpen] = useState(false);
+  const [allergiesOpen, setAllergiesOpen] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
@@ -274,7 +295,9 @@ export default function TodayPage() {
           child:children (
             id,
             first_name,
-            last_name
+            last_name,
+            dob,
+            allergies
           )
         `
         )
@@ -702,6 +725,42 @@ export default function TodayPage() {
 
   const groupOrder: GroupKey[] = ["KINDY_PREPRIMARY", "YEARS_1_3", "YEARS_4_6"];
 
+  const birthdaysCount = useMemo(() => {
+    const days: Date[] = [];
+    for (let i = 6; i >= 0; i -= 1) days.push(addDays(serviceSunday, -i));
+
+    const seen = new Set<string>();
+    for (const row of checkedIn) {
+      if (!row.children || row.children.length === 0) continue;
+      const c = row.children[0];
+      if (!c.dob) continue;
+
+      const dob = new Date(c.dob);
+      if (Number.isNaN(dob.getTime())) continue;
+
+      for (const d of days) {
+        if (sameMonthDay(dob, d)) {
+          seen.add(row.child_id);
+          break;
+        }
+      }
+    }
+    return seen.size;
+  }, [checkedIn, serviceSunday]);
+
+  const allergiesCount = useMemo(() => {
+    let count = 0;
+    for (const row of checkedIn) {
+      if (!row.children || row.children.length === 0) continue;
+      const c = row.children[0];
+      const raw = (c.allergies ?? "").trim();
+      if (!raw) continue;
+      const allergens = parseAllergens(raw);
+      if (allergens.length > 0) count += 1;
+    }
+    return count;
+  }, [checkedIn]);
+
   return (
     <main className="min-h-dvh bg-white">
       <header className="w-full bg-teal-950 text-white">
@@ -774,6 +833,41 @@ export default function TodayPage() {
             aria-label="Next Sunday"
           >
             →
+          </button>
+        </div>
+
+        {/* Quick buttons (same spot, small + light) */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setBirthdaysOpen(true)}
+            className="flex-1 rounded-xl border bg-white px-3 py-2 text-left text-sm font-medium text-slate-900 hover:bg-slate-50"
+          >
+            <div className="flex items-center justify-between">
+              <span>Birthdays</span>
+              <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                {birthdaysCount}
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] font-normal text-slate-500">
+              Last 7 days • Checked-in only
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAllergiesOpen(true)}
+            className="flex-1 rounded-xl border bg-white px-3 py-2 text-left text-sm font-medium text-slate-900 hover:bg-slate-50"
+          >
+            <div className="flex items-center justify-between">
+              <span>Allergies</span>
+              <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                {allergiesCount}
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] font-normal text-slate-500">
+              In play • Checked-in only
+            </p>
           </button>
         </div>
 
@@ -1111,6 +1205,19 @@ export default function TodayPage() {
       </CheckOutModal>
 
       <ManageModal open={manageOpen} onClose={() => setManageOpen(false)} />
+
+      <BirthdaysModal
+        open={birthdaysOpen}
+        onClose={() => setBirthdaysOpen(false)}
+        serviceSunday={serviceSunday}
+        checkedIn={checkedIn}
+      />
+
+      <AllergiesModal
+        open={allergiesOpen}
+        onClose={() => setAllergiesOpen(false)}
+        checkedIn={checkedIn}
+      />
     </main>
   );
 }
