@@ -98,8 +98,8 @@ export default function BirthdaysModal({
               Birthdays (last 7 days)
             </p>
             <p className="text-xs text-slate-500">
-              Checked-in kids only • {formatShortDayLabel(rangeStart)} –{" "}
-              {formatShortDayLabel(serviceSunday)}
+              Attendance list for this Sunday (checked in or checked out) •{" "}
+              {formatShortDayLabel(rangeStart)} – {formatShortDayLabel(serviceSunday)}
             </p>
           </div>
 

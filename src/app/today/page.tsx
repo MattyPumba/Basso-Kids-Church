@@ -850,7 +850,7 @@ export default function TodayPage() {
               </span>
             </div>
             <p className="mt-1 text-[11px] font-normal text-slate-500">
-              Last 7 days • Checked-in only
+              Last 7 days • Attendance list
             </p>
           </button>
 
@@ -866,7 +866,7 @@ export default function TodayPage() {
               </span>
             </div>
             <p className="mt-1 text-[11px] font-normal text-slate-500">
-              In play • Checked-in only
+              In play • Attendance list
             </p>
           </button>
         </div>

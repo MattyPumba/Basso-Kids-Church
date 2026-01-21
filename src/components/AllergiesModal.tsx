@@ -90,7 +90,7 @@ export default function AllergiesModal({
               Allergies in play
             </p>
             <p className="text-xs text-slate-500">
-              Checked-in kids only • Quick glance view
+              Attendance list for this Sunday (checked in or checked out)
             </p>
           </div>
 
